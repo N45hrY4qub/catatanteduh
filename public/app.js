@@ -1303,6 +1303,35 @@
     });
   }
 
+  // --------------------------------------------------------------------------
+  // Pengambilan Data Terbaru dari Server (Anti-Cache untuk Semua Browser)
+  // --------------------------------------------------------------------------
+  async function fetchFreshSiteData() {
+    const bust = Date.now();
+    const candidates = [`/data.json?t=${bust}`, `/public/data.json?t=${bust}`];
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        });
+        if (!res.ok) continue;
+        const json = await res.json();
+        if (json && json.profil) {
+          return json;
+        }
+      } catch (_err) {
+        // Coba kandidat URL berikutnya
+      }
+    }
+    return null;
+  }
+
   // Ekspos API bersih untuk Studio Builder
   window.CatatanTeduhApp = {
     THEME_PALETTES,
@@ -1315,9 +1344,10 @@
     openLightbox,
     downloadAsset,
     applyThemeVariables,
+    fetchFreshSiteData,
   };
 
-  // Jalankan inisialisasi awal halaman publik
+  // Jalankan inisialisasi awal halaman publik (fallback data.js lalu sinkronisasi data.json terbaru)
   const initialData = deepClone(window.SITE_DATA || {});
   bindPublicEvents();
   renderSiteInto(document, initialData, {
@@ -1325,5 +1355,19 @@
     activeTab: state.activeTab,
     searchQuery: "",
     isPreview: false,
+  });
+
+  fetchFreshSiteData().then((freshData) => {
+    if (!freshData) return;
+    window.SITE_DATA = deepClone(freshData);
+    window.dispatchEvent(new CustomEvent("catatanteduh:data-loaded", { detail: freshData }));
+    if (!localStorage.getItem("catatan_teduh_studio_draft_v1")) {
+      renderSiteInto(document, freshData, {
+        includeDrafts: false,
+        activeTab: state.activeTab,
+        searchQuery: state.searchQuery,
+        isPreview: false,
+      });
+    }
   });
 })();

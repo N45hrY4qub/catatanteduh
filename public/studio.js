@@ -96,12 +96,12 @@
         repo: saved.repo || "",
         token: saved.token || "",
         branch: saved.branch || "main",
-        filePath: saved.filePath || "public/data.js",
+        filePath: saved.filePath || "public/data.json",
         userLogin: saved.userLogin || "",
         verified: Boolean(saved.verified),
       };
     } catch (_e) {
-      return { repo: "", token: "", branch: "main", filePath: "public/data.js", userLogin: "", verified: false };
+      return { repo: "", token: "", branch: "main", filePath: "public/data.json", userLogin: "", verified: false };
     }
   }
 
@@ -167,6 +167,7 @@
     publishGhBadge: document.getElementById("publish-gh-badge"),
     publishGhResult: document.getElementById("publish-gh-result"),
     btnPublishGithub: document.getElementById("btn-publish-github"),
+    btnDownloadDatajson: document.getElementById("btn-download-datajson"),
     btnDownloadDatajs: document.getElementById("btn-download-datajs"),
     btnCopyDatajs: document.getElementById("btn-copy-datajs"),
   };
@@ -218,11 +219,15 @@
   }
 
   // --------------------------------------------------------------------------
-  // Generator File `data.js` Bersih Lengkap dengan Komentar Bahasa Indonesia
+  // Generator File `data.json` & `data.js` Bersih Lengkap dengan Komentar
   // --------------------------------------------------------------------------
+  function generateDataJsonContent(sourceData) {
+    const clean = App.deepClone(sourceData);
+    return `${JSON.stringify(clean, null, 2)}\n`;
+  }
+
   function generateDataJsContent(sourceData) {
     const clean = App.deepClone(sourceData);
-    // Saat diekspor untuk GitHub/Cloudflare Pages, ganti dataUrl sementara dengan publicUrl jika ada
     const serialized = JSON.stringify(clean, null, 2);
     return `/**
  * ============================================================================
@@ -840,8 +845,8 @@ window.SITE_DATA = ${serialized};
               <input type="text" id="cfg-gh-branch" value="${App.escapeHtml(gh.branch || "main")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-xs" />
             </div>
             <div>
-              <label class="block text-[11px] font-medium text-gray-600 mb-1">Jalur File data.js</label>
-              <input type="text" id="cfg-gh-path" value="${App.escapeHtml(gh.filePath || "public/data.js")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-xs" />
+              <label class="block text-[11px] font-medium text-gray-600 mb-1">Jalur File Data Utama</label>
+              <input type="text" id="cfg-gh-path" value="${App.escapeHtml(gh.filePath || "public/data.json")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-xs" />
             </div>
           </div>
           <div>
@@ -888,67 +893,83 @@ window.SITE_DATA = ${serialized};
   // --------------------------------------------------------------------------
   // Verifikasi GitHub API & Publish Commit
   // --------------------------------------------------------------------------
+  async function parseGitHubError(res, fallbackMsg) {
+    let raw = "";
+    try {
+      const json = await res.json();
+      const details = Array.isArray(json.errors)
+        ? json.errors.map((e) => e.message || JSON.stringify(e)).join("; ")
+        : "";
+      raw = [json.message, details].filter(Boolean).join(" — ");
+    } catch (_e) {
+      raw = await res.text().catch(() => "");
+    }
+    return `GitHub API Error ${res.status}${raw ? `: ${raw}` : ` (${fallbackMsg})`}`;
+  }
+
   async function verifyGitHubAccess(repoSlug, token) {
-    if (!repoSlug || !repoSlug.includes("/") || !token) {
+    const cleanRepo = String(repoSlug || "").trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+    const cleanToken = String(token || "").trim();
+    if (!cleanRepo || !cleanRepo.includes("/") || !cleanToken) {
       throw new Error("Masukkan nama repositori (username/repo) dan GitHub Token terlebih dahulu.");
     }
     const headers = {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${cleanToken}`,
       Accept: "application/vnd.github+json",
     };
 
-    const userRes = await fetch("https://api.github.com/user", { headers });
-    if (!userRes.ok) throw new Error("Token GitHub tidak valid atau sudah kedaluwarsa.");
+    const userRes = await fetch("https://api.github.com/user", { headers, cache: "no-store" });
+    if (!userRes.ok) {
+      throw new Error(await parseGitHubError(userRes, "Token GitHub tidak valid atau kedaluwarsa"));
+    }
     const userJson = await userRes.json();
 
-    const allowedEmail = getAllowedAdminEmail();
-    try {
-      const emailsRes = await fetch("https://api.github.com/user/emails", { headers });
-      if (emailsRes.ok) {
-        const emailsList = await emailsRes.json();
-        if (Array.isArray(emailsList) && emailsList.length > 0) {
-          const hasOwnerEmail = emailsList.some(
-            (entry) => String(entry.email || "").toLowerCase().trim() === allowedEmail
-          );
-          if (!hasOwnerEmail) {
-            throw new Error(`Akun GitHub @${userJson.login} tidak terhubung dengan email ${allowedEmail}.`);
-          }
-        }
-      }
-    } catch (emailErr) {
-      if (emailErr && emailErr.message && emailErr.message.includes(allowedEmail)) {
-        throw emailErr;
-      }
+    const repoRes = await fetch(`https://api.github.com/repos/${cleanRepo}`, { headers, cache: "no-store" });
+    if (!repoRes.ok) {
+      throw new Error(await parseGitHubError(repoRes, `Repositori "${cleanRepo}" tidak ditemukan`));
     }
-
-    const repoRes = await fetch(`https://api.github.com/repos/${repoSlug}`, { headers });
-    if (!repoRes.ok) throw new Error(`Repositori "${repoSlug}" tidak ditemukan atau tidak dapat diakses.`);
     const repoJson = await repoRes.json();
 
     if (repoJson.permissions && !repoJson.permissions.push) {
-      throw new Error(`Akun @${userJson.login} tidak memiliki izin tulis (push) ke repositori ini.`);
+      throw new Error(`Akun @${userJson.login} tidak memiliki izin tulis (push) ke repositori ${cleanRepo}.`);
     }
 
-    return { userLogin: userJson.login };
+    return {
+      userLogin: userJson.login,
+      repo: cleanRepo,
+      defaultBranch: repoJson.default_branch || "main",
+    };
+  }
+
+  async function githubGetFileSha(repoSlug, token, branch, filePath) {
+    const cleanPath = String(filePath || "").replace(/^\/+/, "");
+    const apiUrl = `https://api.github.com/repos/${repoSlug}/contents/${cleanPath}?ref=${encodeURIComponent(branch)}&_=${Date.now()}`;
+    const res = await fetch(apiUrl, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data.sha ? data.sha : null;
   }
 
   async function githubPutFile(repoSlug, token, branch, filePath, base64Content, commitMessage) {
-    const apiUrl = `https://api.github.com/repos/${repoSlug}/contents/${filePath}`;
+    const cleanPath = String(filePath || "").replace(/^\/+/, "");
+    const apiUrl = `https://api.github.com/repos/${repoSlug}/contents/${cleanPath}`;
     const headers = {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
     };
 
-    let sha = undefined;
-    const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, { headers });
-    if (getRes.ok) {
-      const existing = await getRes.json();
-      sha = existing.sha;
-    }
+    const sha = await githubGetFileSha(repoSlug, token, branch, cleanPath);
 
     const putRes = await fetch(apiUrl, {
       method: "PUT",
+      cache: "no-store",
       headers,
       body: JSON.stringify({
         message: commitMessage,
@@ -959,11 +980,36 @@ window.SITE_DATA = ${serialized};
     });
 
     if (!putRes.ok) {
-      const errJson = await putRes.json().catch(() => ({}));
-      throw new Error(errJson.message || `Gagal menyimpan ${filePath} ke GitHub.`);
+      throw new Error(await parseGitHubError(putRes, `Gagal menyimpan ${cleanPath} ke GitHub`));
     }
 
     return putRes.json();
+  }
+
+  async function resolveDataSyncTargets(repoSlug, token, branch, configuredPath) {
+    const clean = String(configuredPath || "public/data.json").trim().replace(/^\/+/, "");
+    const targetSet = new Set();
+
+    // Selalu sinkronkan file JSON & JS pada lokasi utama aplikasi
+    targetSet.add("public/data.json");
+    targetSet.add("public/data.js");
+
+    if (clean) {
+      targetSet.add(clean);
+      if (clean.endsWith(".json")) {
+        targetSet.add(clean.replace(/\.json$/i, ".js"));
+      } else if (clean.endsWith(".js")) {
+        targetSet.add(clean.replace(/\.js$/i, ".json"));
+      }
+    }
+
+    // Jika repo memiliki data.json / data.js di root (deploy statis tanpa folder public/), ikut perbarui
+    const rootJsonSha = await githubGetFileSha(repoSlug, token, branch, "data.json");
+    if (rootJsonSha) targetSet.add("data.json");
+    const rootJsSha = await githubGetFileSha(repoSlug, token, branch, "data.js");
+    if (rootJsSha) targetSet.add("data.js");
+
+    return Array.from(targetSet);
   }
 
   function utf8ToBase64(str) {
@@ -1121,8 +1167,9 @@ window.SITE_DATA = ${serialized};
         try {
           if (token) {
             const res = await verifyGitHubAccess(repo, token);
-            studio.github.repo = repo;
+            studio.github.repo = res.repo;
             studio.github.token = token;
+            studio.github.branch = studio.github.branch || res.defaultBranch || "main";
             studio.github.userLogin = res.userLogin;
             studio.github.verified = true;
             saveGitHubConfig();
@@ -1407,19 +1454,26 @@ window.SITE_DATA = ${serialized};
       if (e.target.closest("#btn-verify-gh-sidebar")) {
         const repo = document.getElementById("cfg-gh-repo").value.trim();
         const branch = document.getElementById("cfg-gh-branch").value.trim() || "main";
-        const filePath = document.getElementById("cfg-gh-path").value.trim() || "public/data.js";
+        const filePath = document.getElementById("cfg-gh-path").value.trim() || "public/data.json";
         const token = document.getElementById("cfg-gh-token").value.trim();
         const statusEl = document.getElementById("cfg-gh-status");
         statusEl.textContent = "Memeriksa koneksi ke GitHub...";
         try {
           const res = await verifyGitHubAccess(repo, token);
-          studio.github = { repo, branch, filePath, token, userLogin: res.userLogin, verified: true };
+          studio.github = {
+            repo: res.repo,
+            branch: branch || res.defaultBranch || "main",
+            filePath,
+            token,
+            userLogin: res.userLogin,
+            verified: true,
+          };
           saveGitHubConfig();
           renderStudioSidebar();
           const refreshedStatus = document.getElementById("cfg-gh-status");
           if (refreshedStatus) {
             refreshedStatus.className = "text-[11px] text-emerald-700 font-medium";
-            refreshedStatus.textContent = `Berhasil terhubung sebagai @${res.userLogin}.`;
+            refreshedStatus.textContent = `Berhasil terhubung sebagai @${res.userLogin} (branch: ${studio.github.branch}).`;
           }
         } catch (err) {
           statusEl.className = "text-[11px] text-red-700";
@@ -1430,10 +1484,12 @@ window.SITE_DATA = ${serialized};
 
       if (e.target.closest("#btn-reset-draft-local")) {
         localStorage.removeItem(STORAGE_DRAFT_KEY);
-        studio.draftData = App.deepClone(window.SITE_DATA || {});
+        const fresh = App.fetchFreshSiteData ? await App.fetchFreshSiteData() : null;
+        if (fresh) window.SITE_DATA = App.deepClone(fresh);
+        studio.draftData = App.deepClone(fresh || window.SITE_DATA || {});
         studio.pendingUploads = [];
         studio.hasUnsavedChanges = false;
-        updateDraftStatusBadge("Draft direset ke versi asli");
+        updateDraftStatusBadge("Draft direset ke versi server");
         renderStudioSidebar();
         renderLivePreview();
       }
@@ -1529,6 +1585,21 @@ window.SITE_DATA = ${serialized};
       if (e.target === els.publishModal) els.publishModal.classList.add("hidden");
     });
 
+    if (els.btnDownloadDatajson) {
+      els.btnDownloadDatajson.addEventListener("click", () => {
+        const content = generateDataJsonContent(studio.draftData);
+        const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "data.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      });
+    }
+
     els.btnDownloadDatajs.addEventListener("click", () => {
       const content = generateDataJsContent(studio.draftData);
       const blob = new Blob([content], { type: "application/javascript;charset=utf-8" });
@@ -1556,33 +1627,38 @@ window.SITE_DATA = ${serialized};
     els.btnPublishGithub.addEventListener("click", async () => {
       const gh = studio.github;
       if (!gh.verified || !gh.repo || !gh.token) {
-        els.publishGhResult.className = "text-xs rounded-lg p-3 bg-amber-50 text-amber-900 border border-amber-200";
-        els.publishGhResult.textContent =
-          "Silakan hubungkan akun & token GitHub Anda terlebih dahulu di tab 'GitHub' pada panel kiri Studio Editor.";
+        els.publishGhResult.className = "text-xs rounded-lg p-3 leading-relaxed bg-amber-50 text-amber-950 border border-amber-200";
+        els.publishGhResult.innerHTML =
+          '<strong>Belum terhubung ke GitHub.</strong> Perubahan saat ini baru tersimpan di browser lokal (localStorage). Silakan buka tab <strong>GitHub</strong> di panel kiri Studio Editor, masukkan Repositori &amp; Token GitHub Anda, lalu klik <strong>Verifikasi Koneksi GitHub</strong> sebelum menekan tombol Publish.';
         els.publishGhResult.classList.remove("hidden");
         return;
       }
 
       els.btnPublishGithub.disabled = true;
-      els.btnPublishGithub.textContent = "Mengirim ke GitHub...";
+      els.btnPublishGithub.textContent = "Menghubungkan & Mengirim ke GitHub...";
       els.publishGhResult.classList.add("hidden");
 
       try {
+        // Pastikan koneksi & default branch valid sebelum commit
+        const verifiedRepo = await verifyGitHubAccess(gh.repo, gh.token);
+        const targetRepo = verifiedRepo.repo;
+        const targetBranch = (gh.branch || verifiedRepo.defaultBranch || "main").trim();
+
         // 1. Jika ada file upload lokal (data URL), unggah ke repositori & ganti referensinya menjadi publicUrl
         const exportData = App.deepClone(studio.draftData);
         if (studio.pendingUploads.length) {
           for (const up of studio.pendingUploads) {
             await githubPutFile(
-              gh.repo,
+              targetRepo,
               gh.token,
-              gh.branch || "main",
+              targetBranch,
               up.repoPath,
               up.base64Content,
               `chore: unggah media ${up.name} melalui Studio Visual`
             );
           }
 
-          // Petakan URL dataUrl ke publicUrl agar data.js di GitHub ringan & bersih
+          // Petakan URL dataUrl ke publicUrl agar file data di GitHub ringan & bersih
           let updatedJsonStr = JSON.stringify(exportData);
           studio.pendingUploads.forEach((up) => {
             if (up.dataUrl && updatedJsonStr.includes(up.dataUrl)) {
@@ -1592,39 +1668,54 @@ window.SITE_DATA = ${serialized};
           Object.assign(exportData, JSON.parse(updatedJsonStr));
         }
 
-        // 2. Commit public/data.js ke GitHub
-        const fileContent = generateDataJsContent(exportData);
-        const commitRes = await githubPutFile(
-          gh.repo,
-          gh.token,
-          gh.branch || "main",
-          gh.filePath || "public/data.js",
-          utf8ToBase64(fileContent),
-          "content: perbarui tampilan dan konten melalui Studio Visual"
-        );
+        // 2. Sinkronkan file data utama (public/data.json & public/data.js + root jika ada) ke GitHub
+        const targets = await resolveDataSyncTargets(targetRepo, gh.token, targetBranch, gh.filePath);
+        const jsonContent = generateDataJsonContent(exportData);
+        const jsContent = generateDataJsContent(exportData);
 
+        let lastCommitRes = null;
+        for (const filePath of targets) {
+          const isJson = filePath.toLowerCase().endsWith(".json");
+          const rawContent = isJson ? jsonContent : jsContent;
+          lastCommitRes = await githubPutFile(
+            targetRepo,
+            gh.token,
+            targetBranch,
+            filePath,
+            utf8ToBase64(rawContent),
+            `content: perbarui ${filePath} melalui Studio Visual`
+          );
+        }
+
+        // 3. Perbarui state memori, bersihkan draft localStorage, & sinkronkan tampilan
         studio.draftData = exportData;
+        window.SITE_DATA = App.deepClone(exportData);
         studio.pendingUploads = [];
         studio.hasUnsavedChanges = false;
         localStorage.removeItem(STORAGE_DRAFT_KEY);
-        updateDraftStatusBadge("Berhasil dipublikasikan ke GitHub");
+        updateDraftStatusBadge("Terpublish ke GitHub");
 
-        const commitUrl = commitRes?.commit?.html_url;
-        els.publishGhResult.className = "text-xs rounded-lg p-3 bg-emerald-50 text-emerald-900 border border-emerald-200";
+        const commitUrl = lastCommitRes && lastCommitRes.commit ? lastCommitRes.commit.html_url : "";
+        const committedList = targets.map((p) => `<code class="bg-white/80 px-1 rounded">${App.escapeHtml(p)}</code>`).join(", ");
+
+        els.publishGhResult.className = "text-xs rounded-lg p-3.5 leading-relaxed bg-emerald-50 text-emerald-950 border border-emerald-200 space-y-1.5";
         els.publishGhResult.innerHTML = `
-          <strong>Berhasil dipublikasikan!</strong> Perubahan telah dikirim ke repositori <strong>${App.escapeHtml(
-            gh.repo
-          )}</strong>. Cloudflare Pages akan memperbarui situs live dalam ~20–30 detik.
+          <p><strong>Berhasil dipublikasikan ke GitHub!</strong></p>
+          <p>File yang diperbarui pada repositori <strong>${App.escapeHtml(targetRepo)}</strong> (branch <code class="bg-white/80 px-1 rounded">${App.escapeHtml(targetBranch)}</code>): ${committedList}.</p>
+          <p class="text-emerald-900">Catatan: Cloudflare Pages membutuhkan waktu sekitar <strong>30–60 detik</strong> untuk membangun ulang dan menyebarkan pembaruan ke seluruh browser dan mode penyamaran (Incognito).</p>
           ${
             commitUrl
-              ? `<a href="${App.escapeHtml(commitUrl)}" target="_blank" rel="noopener noreferrer" class="underline font-semibold ml-1">Lihat Commit &rarr;</a>`
+              ? `<p><a href="${App.escapeHtml(commitUrl)}" target="_blank" rel="noopener noreferrer" class="underline font-semibold">Lihat Commit di GitHub &rarr;</a></p>`
               : ""
           }
         `;
         els.publishGhResult.classList.remove("hidden");
       } catch (err) {
-        els.publishGhResult.className = "text-xs rounded-lg p-3 bg-red-50 text-red-800 border border-red-200";
-        els.publishGhResult.textContent = `Gagal publish: ${err.message}`;
+        els.publishGhResult.className = "text-xs rounded-lg p-3.5 leading-relaxed bg-red-50 text-red-900 border border-red-200 space-y-1";
+        els.publishGhResult.innerHTML = `
+          <p><strong>Gagal commit ke GitHub</strong></p>
+          <p>${App.escapeHtml(err && err.message ? err.message : String(err))}</p>
+        `;
         els.publishGhResult.classList.remove("hidden");
       } finally {
         els.btnPublishGithub.disabled = false;
@@ -1633,13 +1724,20 @@ window.SITE_DATA = ${serialized};
     });
   }
 
+  // Sinkronkan draftData jika server mengembalikan data.json terbaru dan tidak ada draft lokal tertunda
+  window.addEventListener("catatanteduh:data-loaded", (e) => {
+    if (!localStorage.getItem(STORAGE_DRAFT_KEY) && !studio.isOpen && e.detail) {
+      studio.draftData = App.deepClone(e.detail);
+    }
+  });
+
   // Inisialisasi Studio
   studio.draftData = loadDraftData();
   bindStudioEvents();
   syncHeaderStudioButton();
 
   if (localStorage.getItem(STORAGE_DRAFT_KEY)) {
-    // Tampilkan hasil draft lokal saat pengguna kembali ke situs
+    // Tampilkan hasil draft lokal saat pemilik kembali ke situs
     App.renderSiteInto(document, studio.draftData, {
       includeDrafts: false,
       activeTab: "tulisan",

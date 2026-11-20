@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Catatan Teduh — Ruang Berbagi Ilmu &amp; Nasihat Kehidupan</title>
     <meta
       name="description"
@@ -622,9 +625,9 @@
             <span id="publish-gh-badge" class="text-xs font-medium text-gray-500"></span>
           </div>
           <p class="text-xs text-gray-600 leading-relaxed">
-            Mengirim pembaruan <code class="bg-stone-100 px-1 rounded">data.js</code> (dan media yang baru diunggah) langsung ke repositori GitHub Anda sehingga Cloudflare Pages otomatis deploy ulang.
+            Mengirim pembaruan <code class="bg-stone-100 px-1 rounded">public/data.json</code> &amp; <code class="bg-stone-100 px-1 rounded">public/data.js</code> langsung ke repositori GitHub Anda agar Cloudflare Pages otomatis membangun ulang dan menayangkan data terbaru ke semua browser.
           </p>
-          <div id="publish-gh-result" class="hidden text-xs rounded-lg p-3"></div>
+          <div id="publish-gh-result" class="hidden text-xs rounded-lg p-3 leading-relaxed"></div>
           <button
             type="button"
             id="btn-publish-github"
@@ -636,22 +639,29 @@
 
         <!-- Panel Alternatif Ekspor Manual -->
         <div class="bg-stone-100/70 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-[#1F2937]">2. Alternatif Manual (Unduh / Salin data.js)</h3>
+          <h3 class="text-sm font-semibold text-[#1F2937]">2. Alternatif Manual (Unduh / Salin Data)</h3>
           <p class="text-xs text-gray-600 leading-relaxed">
-            Jika belum menghubungkan token GitHub, unduh file <code class="bg-white px-1 rounded">data.js</code> hasil editan Anda lalu unggah ke folder <code class="bg-white px-1 rounded">public/</code> atau root repositori Anda.
+            Jika belum menghubungkan token GitHub, unduh file <code class="bg-white px-1 rounded">data.json</code> / <code class="bg-white px-1 rounded">data.js</code> hasil editan Anda lalu unggah ke folder <code class="bg-white px-1 rounded">public/</code> di repositori Anda.
           </p>
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
+              id="btn-download-datajson"
+              class="flex-1 py-2 px-3 text-xs font-semibold text-emerald-900 bg-white hover:bg-emerald-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Unduh data.json
+            </button>
+            <button
+              type="button"
               id="btn-download-datajs"
-              class="flex-1 py-2 px-3.5 text-xs font-semibold text-emerald-900 bg-white hover:bg-emerald-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+              class="flex-1 py-2 px-3 text-xs font-semibold text-emerald-900 bg-white hover:bg-emerald-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
             >
               Unduh data.js
             </button>
             <button
               type="button"
               id="btn-copy-datajs"
-              class="flex-1 py-2 px-3.5 text-xs font-semibold text-gray-700 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+              class="flex-1 py-2 px-3 text-xs font-semibold text-gray-700 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
             >
               Salin Kode data.js
             </button>
