@@ -31,7 +31,7 @@
     previewDevice: "desktop",
     previewMode: "draft", // "draft" | "public"
     previewActiveTab: "tulisan",
-    sidebarHidden: false,
+    workspaceView: "edit", // "edit" | "preview"
     hasUnsavedChanges: false,
     pendingConfirmAction: null,
     lastTextControl: null,
@@ -143,12 +143,18 @@
     headerStudioBtn: document.getElementById("header-studio-btn"),
     studioShell: document.getElementById("studio-shell"),
     studioSidebar: document.getElementById("studio-sidebar"),
+    studioPreviewView: document.getElementById("studio-preview-view"),
     studioPanelBody: document.getElementById("studio-panel-body"),
     studioPreviewFrame: document.getElementById("studio-preview-frame"),
     studioPreviewMount: document.getElementById("studio-preview-mount"),
     studioExitBtn: document.getElementById("studio-exit-btn"),
     studioLogoutBtn: document.getElementById("studio-logout-btn"),
-    studioToggleSidebar: document.getElementById("studio-toggle-sidebar"),
+    studioModeTitle: document.getElementById("studio-mode-title"),
+    studioDeviceBar: document.getElementById("studio-device-bar"),
+    studioGoPreview: document.getElementById("studio-go-preview"),
+    studioBackToEdit: document.getElementById("studio-back-to-edit"),
+    previewBackEditBtn: document.getElementById("preview-back-edit-btn"),
+    previewPublishBtn: document.getElementById("preview-publish-btn"),
     studioSaveDraft: document.getElementById("studio-save-draft"),
     studioOpenPublish: document.getElementById("studio-open-publish"),
     studioNavTabs: Array.from(document.querySelectorAll("[data-studio-tab]")),
@@ -256,16 +262,153 @@ window.SITE_DATA = ${serialized};
   }
 
   // --------------------------------------------------------------------------
-  // Render Live Preview di Kanvas Kanan
+  // Pengolah Form Item Konten & Render Halaman Pratinjau Terpisah
   // --------------------------------------------------------------------------
+  function extractContentItemFromForm(type, formData, itemId) {
+    let newItem = { id: itemId, status: formData.get("status") || "published" };
+
+    if (type === "tulisan") {
+      const paragraphs = String(formData.get("isi") || "")
+        .split(/\n\s*\n/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      newItem = {
+        ...newItem,
+        judul: String(formData.get("judul") || "").trim(),
+        kategori: String(formData.get("kategori") || "Refleksi").trim(),
+        waktuBaca: String(formData.get("waktuBaca") || "3 menit baca").trim(),
+        tanggal: String(formData.get("tanggal") || "").trim(),
+        ringkasan: String(formData.get("ringkasan") || "").trim(),
+        isi: paragraphs,
+      };
+    } else if (type === "ebook") {
+      newItem = {
+        ...newItem,
+        judul: String(formData.get("judul") || "").trim(),
+        penulis: String(formData.get("penulis") || "").trim(),
+        tahun: String(formData.get("tahun") || "2026").trim(),
+        halaman: String(formData.get("halaman") || "").trim(),
+        ukuranFile: String(formData.get("ukuranFile") || "").trim(),
+        sampul: String(formData.get("sampul") || "").trim(),
+        fileUrl: String(formData.get("fileUrl") || "").trim(),
+        namaFileUnduh: `${sanitizeFilename(formData.get("judul") || "ebook")}.pdf`,
+        deskripsi: String(formData.get("deskripsi") || "").trim(),
+      };
+    } else if (type === "flyer") {
+      newItem = {
+        ...newItem,
+        judul: String(formData.get("judul") || "").trim(),
+        tema: String(formData.get("tema") || "").trim(),
+        tanggal: String(formData.get("tanggal") || "").trim(),
+        gambar: String(formData.get("gambar") || "").trim(),
+        nasihat: String(formData.get("nasihat") || "").trim(),
+        namaFileUnduh: `${sanitizeFilename(formData.get("judul") || "flyer")}.jpg`,
+      };
+    } else if (type === "audio") {
+      newItem = {
+        ...newItem,
+        judul: String(formData.get("judul") || "").trim(),
+        seri: String(formData.get("seri") || "").trim(),
+        durasi: String(formData.get("durasi") || "").trim(),
+        tanggal: String(formData.get("tanggal") || "").trim(),
+        audioUrl: String(formData.get("audioUrl") || "").trim(),
+        ringkasan: String(formData.get("ringkasan") || "").trim(),
+      };
+    } else if (type === "video") {
+      newItem = {
+        ...newItem,
+        judul: String(formData.get("judul") || "").trim(),
+        youtubeId: extractYoutubeId(formData.get("youtubeId")),
+        kategori: String(formData.get("kategori") || "").trim(),
+        durasi: String(formData.get("durasi") || "").trim(),
+        tanggal: String(formData.get("tanggal") || "").trim(),
+        ringkasan: String(formData.get("ringkasan") || "").trim(),
+      };
+    }
+
+    return newItem;
+  }
+
+  function buildPreviewDataSnapshot() {
+    const form = document.getElementById("studio-item-form");
+    if (!form || studio.editingItemId === null) {
+      return studio.draftData;
+    }
+
+    const type = studio.contentType;
+    const isNew = studio.editingItemId === "new";
+    const id = isNew ? `preview-${type}` : studio.editingItemId;
+    const formItem = extractContentItemFromForm(type, new FormData(form), id);
+    const hasContent = Boolean(
+      formItem.judul ||
+        formItem.ringkasan ||
+        formItem.deskripsi ||
+        formItem.nasihat ||
+        (Array.isArray(formItem.isi) && formItem.isi.length)
+    );
+
+    if (isNew && !hasContent) {
+      return studio.draftData;
+    }
+
+    const clone = App.deepClone(studio.draftData);
+    const list = clone[type] || [];
+    clone[type] = isNew
+      ? [formItem, ...list]
+      : list.map((item) => (item.id === id ? formItem : item));
+    return clone;
+  }
+
   function renderLivePreview() {
-    if (!studio.isOpen || !els.studioPreviewMount) return;
-    App.renderSiteInto(els.studioPreviewMount, studio.draftData, {
+    if (!studio.isOpen || studio.workspaceView !== "preview" || !els.studioPreviewMount) return;
+    const snapshot = buildPreviewDataSnapshot();
+    App.renderSiteInto(els.studioPreviewMount, snapshot, {
       includeDrafts: studio.previewMode === "draft",
       activeTab: studio.previewActiveTab,
       searchQuery: "",
       isPreview: true,
     });
+  }
+
+  function setStudioWorkspaceView(view) {
+    const isPreview = view === "preview";
+    studio.workspaceView = isPreview ? "preview" : "edit";
+
+    if (els.studioSidebar) {
+      els.studioSidebar.classList.toggle("hidden", isPreview);
+      els.studioSidebar.classList.toggle("flex", !isPreview);
+    }
+    if (els.studioPreviewView) {
+      els.studioPreviewView.classList.toggle("hidden", !isPreview);
+      els.studioPreviewView.classList.toggle("flex", isPreview);
+    }
+    if (els.studioDeviceBar) {
+      els.studioDeviceBar.classList.toggle("hidden", !isPreview);
+      els.studioDeviceBar.classList.toggle("md:flex", isPreview);
+    }
+    if (els.studioBackToEdit) {
+      els.studioBackToEdit.classList.toggle("hidden", !isPreview);
+      els.studioBackToEdit.classList.toggle("inline-flex", isPreview);
+    }
+    if (els.studioGoPreview) {
+      els.studioGoPreview.classList.toggle("hidden", isPreview);
+      els.studioGoPreview.classList.toggle("inline-flex", !isPreview);
+    }
+    if (els.studioSaveDraft) {
+      els.studioSaveDraft.classList.toggle("hidden", isPreview);
+    }
+    if (els.studioModeTitle) {
+      els.studioModeTitle.textContent = isPreview ? "Pratinjau Website" : "Studio Editor";
+    }
+
+    if (isPreview) {
+      if (studio.studioTab === "konten" && studio.contentType) {
+        studio.previewActiveTab = studio.contentType;
+      }
+      applyPreviewDeviceSize();
+      renderLivePreview();
+      if (els.studioPreviewView) els.studioPreviewView.scrollTop = 0;
+    }
   }
 
   function applyPreviewDeviceSize() {
@@ -622,7 +765,7 @@ window.SITE_DATA = ${serialized};
     return `
       <div class="space-y-4">
         <p class="text-xs text-gray-500 leading-relaxed">
-          Setiap teks yang Anda ketik di sini akan langsung terlihat pada Live Preview di sebelah kanan.
+          Edit teks beranda dengan leluasa di bawah ini, lalu klik tombol <strong>Lihat Pratinjau</strong> di atas untuk melihat tampilannya.
         </p>
 
         ${renderRichTextFontToolbar("Sorot teks beranda untuk ganti font")}
@@ -781,7 +924,7 @@ window.SITE_DATA = ${serialized};
         }
 
         <!-- Daftar Item -->
-        <div class="space-y-2.5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${
             visibleItems.length
               ? visibleItems
@@ -864,7 +1007,7 @@ window.SITE_DATA = ${serialized};
                     `;
                   })
                   .join("")
-              : `<p class="text-xs text-gray-500 text-center py-6">${
+              : `<p class="md:col-span-2 text-xs text-gray-500 text-center py-8">${
                   showingTrash
                     ? "Belum ada konten yang dihapus sementara pada kategori ini."
                     : "Belum ada konten aktif pada kategori ini."
@@ -910,7 +1053,7 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Isi Artikel Lengkap (pisahkan paragraf dengan Enter 2x)</label>
-          <textarea name="isi" dir="auto" data-field-label="Isi Artikel" rows="7" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm leading-relaxed">${App.escapeHtml(isiText)}</textarea>
+          <textarea name="isi" dir="auto" data-field-label="Isi Artikel" rows="11" required class="w-full px-3.5 py-2.5 border border-stone-200 rounded-xl text-sm leading-relaxed">${App.escapeHtml(isiText)}</textarea>
         </div>
       `;
     } else if (type === "ebook") {
@@ -1321,7 +1464,7 @@ window.SITE_DATA = ${serialized};
     updateDraftStatusBadge();
     applyPreviewDeviceSize();
     renderStudioSidebar();
-    renderLivePreview();
+    setStudioWorkspaceView("edit");
   }
 
   function exitStudioWorkspace() {
@@ -1545,11 +1688,27 @@ window.SITE_DATA = ${serialized};
       });
     }
 
-    els.studioToggleSidebar.addEventListener("click", () => {
-      studio.sidebarHidden = !studio.sidebarHidden;
-      els.studioSidebar.classList.toggle("lg:hidden", studio.sidebarHidden);
-      els.studioToggleSidebar.querySelector("span").textContent = studio.sidebarHidden ? "Tampilkan Editor" : "Layar Penuh";
-    });
+    if (els.studioGoPreview) {
+      els.studioGoPreview.addEventListener("click", () => {
+        setStudioWorkspaceView("preview");
+      });
+    }
+
+    if (els.studioBackToEdit) {
+      els.studioBackToEdit.addEventListener("click", () => {
+        setStudioWorkspaceView("edit");
+      });
+    }
+
+    if (els.previewBackEditBtn) {
+      els.previewBackEditBtn.addEventListener("click", () => {
+        setStudioWorkspaceView("edit");
+      });
+    }
+
+    if (els.previewPublishBtn) {
+      els.previewPublishBtn.addEventListener("click", openPublishModal);
+    }
 
     els.studioSaveDraft.addEventListener("click", () => {
       saveDraftToLocal();
@@ -2259,66 +2418,7 @@ window.SITE_DATA = ${serialized};
       const list = studio.draftData[type] || [];
 
       const id = isNew ? `${type}-${Date.now()}` : studio.editingItemId;
-      let newItem = { id, status: formData.get("status") || "published" };
-
-      if (type === "tulisan") {
-        const paragraphs = String(formData.get("isi") || "")
-          .split(/\n\s*\n/)
-          .map((p) => p.trim())
-          .filter(Boolean);
-        newItem = {
-          ...newItem,
-          judul: String(formData.get("judul") || "").trim(),
-          kategori: String(formData.get("kategori") || "Refleksi").trim(),
-          waktuBaca: String(formData.get("waktuBaca") || "3 menit baca").trim(),
-          tanggal: String(formData.get("tanggal") || "").trim(),
-          ringkasan: String(formData.get("ringkasan") || "").trim(),
-          isi: paragraphs,
-        };
-      } else if (type === "ebook") {
-        newItem = {
-          ...newItem,
-          judul: String(formData.get("judul") || "").trim(),
-          penulis: String(formData.get("penulis") || "").trim(),
-          tahun: String(formData.get("tahun") || "2026").trim(),
-          halaman: String(formData.get("halaman") || "").trim(),
-          ukuranFile: String(formData.get("ukuranFile") || "").trim(),
-          sampul: String(formData.get("sampul") || "").trim(),
-          fileUrl: String(formData.get("fileUrl") || "").trim(),
-          namaFileUnduh: `${sanitizeFilename(formData.get("judul") || "ebook")}.pdf`,
-          deskripsi: String(formData.get("deskripsi") || "").trim(),
-        };
-      } else if (type === "flyer") {
-        newItem = {
-          ...newItem,
-          judul: String(formData.get("judul") || "").trim(),
-          tema: String(formData.get("tema") || "").trim(),
-          tanggal: String(formData.get("tanggal") || "").trim(),
-          gambar: String(formData.get("gambar") || "").trim(),
-          nasihat: String(formData.get("nasihat") || "").trim(),
-          namaFileUnduh: `${sanitizeFilename(formData.get("judul") || "flyer")}.jpg`,
-        };
-      } else if (type === "audio") {
-        newItem = {
-          ...newItem,
-          judul: String(formData.get("judul") || "").trim(),
-          seri: String(formData.get("seri") || "").trim(),
-          durasi: String(formData.get("durasi") || "").trim(),
-          tanggal: String(formData.get("tanggal") || "").trim(),
-          audioUrl: String(formData.get("audioUrl") || "").trim(),
-          ringkasan: String(formData.get("ringkasan") || "").trim(),
-        };
-      } else if (type === "video") {
-        newItem = {
-          ...newItem,
-          judul: String(formData.get("judul") || "").trim(),
-          youtubeId: extractYoutubeId(formData.get("youtubeId")),
-          kategori: String(formData.get("kategori") || "").trim(),
-          durasi: String(formData.get("durasi") || "").trim(),
-          tanggal: String(formData.get("tanggal") || "").trim(),
-          ringkasan: String(formData.get("ringkasan") || "").trim(),
-        };
-      }
+      const newItem = extractContentItemFromForm(type, formData, id);
 
       if (isNew) {
         studio.draftData[type] = [newItem, ...list];

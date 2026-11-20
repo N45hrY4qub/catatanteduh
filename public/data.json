@@ -5,14 +5,7 @@
     "gayaKartu": "halus",
     "tampilkanSorotan": true,
     "tampilkanPencarian": true,
-    "tabAktif": [
-      "tulisan",
-      "ebook",
-      "flyer",
-      "audio",
-      "video",
-      "diskusi"
-    ]
+    "tabAktif": ["tulisan", "ebook", "flyer", "audio", "video", "diskusi"]
   },
   "profil": {
     "namaWebsite": "Catatan Teduh",
@@ -142,5 +135,26 @@
       "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-merawat-niat.mp3"
     }
   ],
-  "video": []
+  "video": [
+    {
+      "id": "video-1",
+      "status": "published",
+      "judul": "Menemukan Irama Hidup yang Seimbang dan Bermakna",
+      "kategori": "Kajian Ringkas",
+      "durasi": "14 menit",
+      "tanggal": "08 November 2026",
+      "youtubeId": "jfKfPfyJRdk",
+      "ringkasan": "Pembahasan tentang menata ulang ritme harian agar kesibukan mencari nafkah tidak menggerus waktu bersama keluarga dan ketenangan ibadah."
+    },
+    {
+      "id": "video-2",
+      "status": "published",
+      "judul": "Empat Kebiasaan Sederhana Penjaga Kejernihan Pikiran",
+      "kategori": "Catatan Kehidupan",
+      "durasi": "11 menit",
+      "tanggal": "27 Oktober 2026",
+      "youtubeId": "5qap5aO4i9A",
+      "ringkasan": "Langkah-langkah praktis mengurangi kebisingan mental melalui kebiasaan membaca, menulis catatan harian, menjaga ucapan, dan menyaring informasi."
+    }
+  ]
 }
