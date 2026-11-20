@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 20/11/2026, 19.00.00.
+ * Diperbarui melalui Studio Visual Editor pada 20/11/2026, 19.53.33.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -29,7 +29,7 @@ window.SITE_DATA = {
     "judulUtama": "Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang",
     "subjudul": "— ruang berbagi ilmu & nasihat kehidupan —",
     "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini saya menghimpun catatan refleksi kehidupan, buku saku digital, pengingat visual, rekaman audio, serta ruang diskusi terbuka yang dapat diakses siapa saja secara bebas.",
-    "namaPemilik": "Ibnu Ya'qub Ndalu",
+    "namaPemilik": "Ahmad Fauzan",
     "emailAdmin": "benyaqub@gmail.com",
     "tahunHakCipta": "2026"
   },
@@ -48,6 +48,22 @@ window.SITE_DATA = {
   },
   "tulisan": [
     {
+      "id": "art-1",
+      "status": "published",
+      "judul": "Seni Berhenti Sejenak di Tengah Dunia yang Terburu-buru",
+      "tanggal": "14 November 2026",
+      "kategori": "Refleksi Diri",
+      "waktuBaca": "4 menit baca",
+      "ringkasan": "Tidak semua hal mendesak perlu diselesaikan hari ini. Terkadang, ketenangan lahir justru ketika kita berani melambatkan langkah dan menata ulang niat.",
+      "isi": [
+        "Kita hidup di zaman ketika kecepatan sering disamakan dengan keberhasilan. Sejak membuka mata di pagi hari, arus informasi dan tuntutan pekerjaan seolah mendesak kita untuk terus berlari tanpa sempat menoleh ke dalam diri sendiri.",
+        "Padahal, jiwa manusia tidak dirancang untuk bekerja seperti mesin yang terus menyala tanpa jeda. Air yang keruh tidak akan pernah menjadi jernih apabila terus diaduk; ia hanya membutuhkan ketenangan untuk mengendapkan segala kekeruhan menuju dasar.",
+        "Berhenti sejenak bukanlah tanda kelemahan atau kemalasan. Dalam tradisi para penuntut ilmu terdahulu, jeda adalah ruang bagi muhasabah—memeriksa kembali apakah langkah yang kita ambil masih selaras dengan nilai yang kita yakini, atau sekadar ikut-ikutan arus keramaian.",
+        "Mulailah dengan hal kecil hari ini: sisihkan lima belas menit tanpa gawai sebelum beraktivitas. Tarik napas dalam, syukuri nikmat sehat yang sering terlupa, dan tetapkan satu niat baik yang tulus untuk dijalani sepanjang hari.",
+        "Ketika hati tenang, keputusan yang diambil menjadi lebih jernih, ucapan lebih terjaga, dan lelah pun berubah menjadi ibadah yang bernilai."
+      ]
+    },
+    {
       "id": "art-2",
       "status": "published",
       "judul": "Menjaga Lisan dan Hati Saat Berbeda Pandangan",
@@ -63,19 +79,44 @@ window.SITE_DATA = {
       ]
     }
   ],
-  "ebook": [],
+  "ebook": [
+    {
+      "id": "ebook-1",
+      "status": "published",
+      "judul": "Seni Merawat Ketenangan Hati",
+      "penulis": "Ahmad Fauzan",
+      "tahun": "2026",
+      "halaman": "42 Halaman",
+      "ukuranFile": "1,8 MB",
+      "sampul": "/src/assets/images/ebook_ketenangan_1795070324246.jpg",
+      "deskripsi": "Kumpulan catatan ringkas tentang mengelola kecemasan, membangun kebiasaan syukur harian, dan menemukan makna dalam keseharian yang sederhana.",
+      "fileUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/seni-merawat-ketenangan-hati.pdf",
+      "namaFileUnduh": "Seni-Merawat-Ketenangan-Hati.pdf"
+    },
+    {
+      "id": "ebook-2",
+      "status": "published",
+      "judul": "Kompas Langkah Sederhana",
+      "penulis": "Ahmad Fauzan",
+      "tahun": "2026",
+      "halaman": "36 Halaman",
+      "ukuranFile": "1,4 MB",
+      "sampul": "/src/assets/images/ebook_langkah_1795070325125.jpg",
+      "deskripsi": "Panduan praktis menyusun prioritas hidup, menjaga konsistensi amal kebaikan yang kecil namun berkelanjutan, serta merawat adab dalam bekerja.",
+      "fileUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/kompas-langkah-sederhana.pdf",
+      "namaFileUnduh": "Kompas-Langkah-Sederhana.pdf"
+    }
+  ],
   "flyer": [
     {
       "id": "flyer-1",
-      "status": "trash",
+      "status": "published",
       "judul": "Tenang Seperti Air di Pagi Hari",
       "tema": "Kesabaran",
       "tanggal": "12 November 2026",
       "gambar": "/src/assets/images/flyer_sabar_1795070324398.jpg",
       "nasihat": "Jangan tergesa-gesa menilai sebuah ujian sebagai akhir dari jalan. Sebagaimana kabut pagi yang perlahan tersingkap, hikmah selalu datang bersama kesabaran yang tenang.",
-      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg",
-      "previousStatus": "published",
-      "deletedAt": "2026-11-20T11:59:43.370Z"
+      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg"
     },
     {
       "id": "flyer-2",
@@ -88,6 +129,27 @@ window.SITE_DATA = {
       "namaFileUnduh": "Flyer-Nasihat-Syukur.jpg"
     }
   ],
-  "audio": [],
+  "audio": [
+    {
+      "id": "audio-1",
+      "status": "published",
+      "judul": "Berbaik Sangka pada Ketentuan yang Tertunda",
+      "seri": "Siniar Jeda · Eps. 01",
+      "tanggal": "10 November 2026",
+      "durasi": "00:12",
+      "ringkasan": "Renungan suara singkat tentang bagaimana menyikapi doa dan harapan yang belum terwujud sesuai waktu yang kita inginkan.",
+      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-berbaik-sangka.mp3"
+    },
+    {
+      "id": "audio-2",
+      "status": "published",
+      "judul": "Merawat Niat Baik di Ruang Sunyi",
+      "seri": "Siniar Jeda · Eps. 02",
+      "tanggal": "01 November 2026",
+      "durasi": "00:12",
+      "ringkasan": "Mengapa amalan dan ketulusan yang terjaga tanpa perlu pengakuan manusia justru menjadi penopang keteguhan hati paling kuat.",
+      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-merawat-niat.mp3"
+    }
+  ],
   "video": []
 };
