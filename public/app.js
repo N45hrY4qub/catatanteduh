@@ -119,6 +119,7 @@
   function filterItems(siteData, key, query, includeDrafts) {
     const list = Array.isArray(siteData[key]) ? siteData[key] : [];
     return list.filter((item) => {
+      if (item.status === "trash") return false;
       if (!includeDrafts && item.status === "draft") return false;
       if (!query || !query.trim()) return true;
       const q = query.toLowerCase().trim();
@@ -1304,6 +1305,66 @@
   }
 
   // --------------------------------------------------------------------------
+  // Migrasi Aman & Normalisasi Skema (Menjaga Konten Lama Saat Fitur Baru Rilis)
+  // --------------------------------------------------------------------------
+  const DEFAULT_SITE_SCHEMA = {
+    tampilan: {
+      warnaAksen: "emerald",
+      jenisFont: "editorial",
+      gayaKartu: "halus",
+      tampilkanSorotan: true,
+      tampilkanPencarian: true,
+      tabAktif: ["tulisan", "ebook", "flyer", "audio", "video", "diskusi"],
+    },
+    profil: {
+      namaWebsite: "Catatan Teduh",
+      kicker: "Ruang Berbagi Ilmu · Edisi Terbuka",
+      judulUtama: "Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang",
+      subjudul: "— ruang berbagi ilmu & nasihat kehidupan —",
+      deskripsi: "",
+      namaPemilik: "Admin",
+      emailAdmin: "benyaqub@gmail.com",
+      tahunHakCipta: "2026",
+    },
+    giscus: {
+      repo: "N45hrY4qub/catatanteduh",
+      repoId: "R_kgDOV1DaVg",
+      category: "General",
+      categoryId: "DIC_kwDOV1DaVs4DLjdL",
+      mapping: "pathname",
+      strict: "0",
+      reactionsEnabled: "1",
+      emitMetadata: "0",
+      inputPosition: "bottom",
+      theme: "preferred_color_scheme",
+      lang: "id",
+    },
+  };
+
+  function normalizeSiteData(rawData) {
+    const src = rawData && typeof rawData === "object" ? deepClone(rawData) : {};
+    const tampilan = { ...DEFAULT_SITE_SCHEMA.tampilan, ...(src.tampilan || {}) };
+    if (!Array.isArray(tampilan.tabAktif) || !tampilan.tabAktif.length) {
+      tampilan.tabAktif = [...DEFAULT_SITE_SCHEMA.tampilan.tabAktif];
+    }
+
+    const profil = { ...DEFAULT_SITE_SCHEMA.profil, ...(src.profil || {}) };
+    const giscus = { ...DEFAULT_SITE_SCHEMA.giscus, ...(src.giscus || {}) };
+
+    return {
+      ...src,
+      tampilan,
+      profil,
+      giscus,
+      tulisan: Array.isArray(src.tulisan) ? src.tulisan : [],
+      ebook: Array.isArray(src.ebook) ? src.ebook : [],
+      flyer: Array.isArray(src.flyer) ? src.flyer : [],
+      audio: Array.isArray(src.audio) ? src.audio : [],
+      video: Array.isArray(src.video) ? src.video : [],
+    };
+  }
+
+  // --------------------------------------------------------------------------
   // Pengambilan Data Terbaru dari Server (Anti-Cache untuk Semua Browser)
   // --------------------------------------------------------------------------
   async function fetchFreshSiteData() {
@@ -1322,8 +1383,8 @@
         });
         if (!res.ok) continue;
         const json = await res.json();
-        if (json && json.profil) {
-          return json;
+        if (json && (json.profil || Array.isArray(json.tulisan))) {
+          return normalizeSiteData(json);
         }
       } catch (_err) {
         // Coba kandidat URL berikutnya
@@ -1339,6 +1400,7 @@
     TAB_META,
     deepClone,
     escapeHtml,
+    normalizeSiteData,
     renderSiteInto,
     openArticleModal,
     openLightbox,
@@ -1348,7 +1410,8 @@
   };
 
   // Jalankan inisialisasi awal halaman publik (fallback data.js lalu sinkronisasi data.json terbaru)
-  const initialData = deepClone(window.SITE_DATA || {});
+  const initialData = normalizeSiteData(window.SITE_DATA || {});
+  window.SITE_DATA = deepClone(initialData);
   bindPublicEvents();
   renderSiteInto(document, initialData, {
     includeDrafts: false,

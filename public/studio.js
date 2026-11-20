@@ -26,12 +26,14 @@
     isOpen: false,
     studioTab: "tampilan",
     contentType: "tulisan",
+    contentView: "active", // "active" | "trash"
     editingItemId: null, // "new" | item.id | null
     previewDevice: "desktop",
     previewMode: "draft", // "draft" | "public"
     previewActiveTab: "tulisan",
     sidebarHidden: false,
     hasUnsavedChanges: false,
+    pendingConfirmAction: null,
     pendingUploads: [], // { repoPath, base64Content, name }
     draftData: null,
     github: loadGitHubConfig(),
@@ -114,13 +116,13 @@
       const saved = localStorage.getItem(STORAGE_DRAFT_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.profil) {
+        if (parsed && (parsed.profil || parsed.tampilan || Array.isArray(parsed.tulisan))) {
           studio.hasUnsavedChanges = true;
-          return parsed;
+          return App.normalizeSiteData(parsed);
         }
       }
     } catch (_e) {}
-    return App.deepClone(window.SITE_DATA || {});
+    return App.normalizeSiteData(window.SITE_DATA || {});
   }
 
   function saveDraftToLocal() {
@@ -167,9 +169,19 @@
     publishGhBadge: document.getElementById("publish-gh-badge"),
     publishGhResult: document.getElementById("publish-gh-result"),
     btnPublishGithub: document.getElementById("btn-publish-github"),
+    btnDownloadZipUi: document.getElementById("btn-download-zip-ui"),
+    btnDownloadZip: document.getElementById("btn-download-zip"),
     btnDownloadDatajson: document.getElementById("btn-download-datajson"),
     btnDownloadDatajs: document.getElementById("btn-download-datajs"),
     btnCopyDatajs: document.getElementById("btn-copy-datajs"),
+    // Modal Konfirmasi Hapus
+    confirmModal: document.getElementById("studio-confirm-modal"),
+    confirmBadge: document.getElementById("studio-confirm-badge"),
+    confirmTitle: document.getElementById("studio-confirm-title"),
+    confirmMessage: document.getElementById("studio-confirm-message"),
+    confirmClose: document.getElementById("studio-confirm-close"),
+    confirmCancel: document.getElementById("studio-confirm-cancel"),
+    confirmAccept: document.getElementById("studio-confirm-accept"),
   };
 
   // --------------------------------------------------------------------------
@@ -529,20 +541,31 @@ window.SITE_DATA = ${serialized};
       { key: "video", label: "Video" },
     ];
 
-    const items = studio.draftData[studio.contentType] || [];
+    const allItems = studio.draftData[studio.contentType] || [];
+    const activeItems = allItems.filter((i) => i.status !== "trash");
+    const trashItems = allItems.filter((i) => i.status === "trash");
+    const totalTrashAllCategories = types.reduce(
+      (sum, t) => sum + (studio.draftData[t.key] || []).filter((i) => i.status === "trash").length,
+      0
+    );
 
     // Jika sedang membuka form Tambah / Edit
     if (studio.editingItemId !== null) {
       return renderContentItemForm(studio.contentType, studio.editingItemId);
     }
 
+    const currentLabel = types.find((t) => t.key === studio.contentType).label;
+    const showingTrash = studio.contentView === "trash";
+    const visibleItems = showingTrash ? trashItems : activeItems;
+
     return `
       <div class="space-y-4">
         <!-- Pilih Kategori Konten -->
         <div class="flex flex-wrap gap-1.5">
           ${types
-            .map(
-              (t) => `
+            .map((t) => {
+              const activeCount = (studio.draftData[t.key] || []).filter((i) => i.status !== "trash").length;
+              return `
             <button
               type="button"
               data-content-type="${t.key}"
@@ -552,65 +575,162 @@ window.SITE_DATA = ${serialized};
                   : "bg-white text-gray-600 border-stone-200 hover:bg-stone-50"
               }"
             >
-              ${t.label} (${(studio.draftData[t.key] || []).length})
+              ${t.label} (${activeCount})
             </button>
-          `
-            )
+          `;
+            })
             .join("")}
         </div>
 
-        <!-- Tombol Tambah Item Baru -->
-        <button
-          type="button"
-          id="btn-add-content-item"
-          class="w-full py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
-        >
-          + Tambah ${types.find((t) => t.key === studio.contentType).label} Baru
-        </button>
+        <!-- Pengalih Tampilan: Konten Aktif vs Terhapus Sementara (Sampah) -->
+        <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-100 border border-stone-200 rounded-xl text-[11px] font-semibold">
+          <button
+            type="button"
+            data-content-view="active"
+            class="py-1.5 px-2.5 rounded-lg transition-colors ${
+              !showingTrash ? "bg-white text-emerald-900 shadow-xs" : "text-gray-600 hover:text-gray-900"
+            }"
+          >
+            Konten Aktif (${activeItems.length})
+          </button>
+          <button
+            type="button"
+            data-content-view="trash"
+            class="py-1.5 px-2.5 rounded-lg transition-colors ${
+              showingTrash
+                ? "bg-white text-amber-800 shadow-xs"
+                : totalTrashAllCategories > 0
+                ? "text-amber-700 hover:text-amber-900"
+                : "text-gray-600 hover:text-gray-900"
+            }"
+          >
+            Hapus Sementara (${trashItems.length})
+          </button>
+        </div>
+
+        ${
+          !showingTrash
+            ? `
+          <!-- Tombol Tambah Item Baru -->
+          <button
+            type="button"
+            id="btn-add-content-item"
+            class="w-full py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
+          >
+            + Tambah ${currentLabel} Baru
+          </button>
+        `
+            : `
+          <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-[11px] text-amber-950 space-y-2">
+            <p class="leading-relaxed">
+              Konten di sini berstatus <strong>dihapus sementara</strong> (tidak tampil di website) dan masih dapat dipulihkan lagi kapan saja.
+            </p>
+            ${
+              trashItems.length
+                ? `
+              <button
+                type="button"
+                id="btn-empty-category-trash"
+                class="w-full py-1.5 px-3 text-[11px] font-semibold text-red-700 bg-white hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+              >
+                Hapus Selamanya Semua Sampah ${currentLabel} (${trashItems.length})
+              </button>
+            `
+                : ""
+            }
+          </div>
+        `
+        }
 
         <!-- Daftar Item -->
         <div class="space-y-2.5">
           ${
-            items.length
-              ? items
-                  .map(
-                    (item, idx) => `
-                <div class="p-3.5 rounded-xl border border-stone-200 bg-white space-y-2.5">
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-2 mb-1">
-                        <span class="text-[11px] font-semibold ${
-                          item.status === "draft" ? "text-amber-700" : "text-emerald-700"
-                        }">
-                          ${item.status === "draft" ? "Draft" : "Tayang"}
-                        </span>
-                        <span class="text-[11px] text-gray-400">·</span>
-                        <span class="text-[11px] text-gray-500 truncate">${App.escapeHtml(item.tanggal || item.tahun || "")}</span>
-                      </div>
-                      <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(item.judul)}</p>
-                    </div>
-                    <div class="flex items-center gap-1 shrink-0">
-                      <button type="button" data-move-item="${idx}" data-dir="-1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Naikkan">&uarr;</button>
-                      <button type="button" data-move-item="${idx}" data-dir="1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Turunkan">&darr;</button>
-                    </div>
-                  </div>
+            visibleItems.length
+              ? visibleItems
+                  .map((item) => {
+                    if (showingTrash) {
+                      const deletedInfo = item.deletedAt
+                        ? new Date(item.deletedAt).toLocaleDateString("id-ID", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : item.tanggal || item.tahun || "";
+                      return `
+                        <div class="p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/30 space-y-2.5">
+                          <div class="min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                              <span class="text-[11px] font-semibold text-amber-700">Dihapus Sementara</span>
+                              <span class="text-[11px] text-gray-400">&middot;</span>
+                              <span class="text-[11px] text-gray-500 truncate">${App.escapeHtml(deletedInfo)}</span>
+                            </div>
+                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(item.judul)}</p>
+                          </div>
 
-                  <div class="flex items-center gap-2 pt-2 border-t border-stone-100 text-[11px]">
-                    <button type="button" data-edit-item="${App.escapeHtml(item.id)}" class="px-2.5 py-1 font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-md">
-                      Edit
-                    </button>
-                    <button type="button" data-toggle-item-status="${App.escapeHtml(item.id)}" class="px-2.5 py-1 font-medium text-gray-700 bg-stone-100 hover:bg-stone-200 rounded-md">
-                      ${item.status === "draft" ? "Jadikan Tayang" : "Simpan sbg Draft"}
-                    </button>
-                    <button type="button" data-delete-item="${App.escapeHtml(item.id)}" class="ml-auto px-2 py-1 font-medium text-red-700 hover:bg-red-50 rounded-md">
-                      Hapus
-                    </button>
-                  </div>
-                </div>
-              `
-                  )
+                          <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-amber-200/60 text-[11px]">
+                            <button
+                              type="button"
+                              data-restore-item="${App.escapeHtml(item.id)}"
+                              class="px-2.5 py-1 font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md"
+                            >
+                              Pulihkan Kembali
+                            </button>
+                            <button
+                              type="button"
+                              data-hard-delete-item="${App.escapeHtml(item.id)}"
+                              class="ml-auto px-2.5 py-1 font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md"
+                            >
+                              Hapus Selamanya
+                            </button>
+                          </div>
+                        </div>
+                      `;
+                    }
+
+                    return `
+                      <div class="p-3.5 rounded-xl border border-stone-200 bg-white space-y-2.5">
+                        <div class="flex items-start justify-between gap-2">
+                          <div class="min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                              <span class="text-[11px] font-semibold ${
+                                item.status === "draft" ? "text-amber-700" : "text-emerald-700"
+                              }">
+                                ${item.status === "draft" ? "Draft" : "Tayang"}
+                              </span>
+                              <span class="text-[11px] text-gray-400">&middot;</span>
+                              <span class="text-[11px] text-gray-500 truncate">${App.escapeHtml(item.tanggal || item.tahun || "")}</span>
+                            </div>
+                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(item.judul)}</p>
+                          </div>
+                          <div class="flex items-center gap-1 shrink-0">
+                            <button type="button" data-move-item-id="${App.escapeHtml(item.id)}" data-dir="-1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Naikkan">&uarr;</button>
+                            <button type="button" data-move-item-id="${App.escapeHtml(item.id)}" data-dir="1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Turunkan">&darr;</button>
+                          </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-stone-100 text-[11px]">
+                          <button type="button" data-edit-item="${App.escapeHtml(item.id)}" class="px-2 py-1 font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-md">
+                            Edit
+                          </button>
+                          <button type="button" data-toggle-item-status="${App.escapeHtml(item.id)}" class="px-2 py-1 font-medium text-gray-700 bg-stone-100 hover:bg-stone-200 rounded-md">
+                            ${item.status === "draft" ? "Tayangkan" : "Draft"}
+                          </button>
+                          <button type="button" data-soft-delete-item="${App.escapeHtml(item.id)}" class="ml-auto px-2 py-1 font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-md">
+                            Hapus Sementara
+                          </button>
+                          <button type="button" data-hard-delete-item="${App.escapeHtml(item.id)}" class="px-2 py-1 font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200/80 rounded-md">
+                            Hapus Selamanya
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                  })
                   .join("")
-              : `<p class="text-xs text-gray-500 text-center py-6">Belum ada konten pada kategori ini.</p>`
+              : `<p class="text-xs text-gray-500 text-center py-6">${
+                  showingTrash
+                    ? "Belum ada konten yang dihapus sementara pada kategori ini."
+                    : "Belum ada konten aktif pada kategori ini."
+                }</p>`
           }
         </div>
       </div>
@@ -886,6 +1006,29 @@ window.SITE_DATA = ${serialized};
             <input type="text" data-giscus-field="category" value="${App.escapeHtml(g.category)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-xs" />
           </div>
         </div>
+
+        <!-- Cadangan & Pemulihan Konten -->
+        <div class="pt-4 border-t border-stone-200 space-y-3">
+          <h3 class="text-xs font-semibold text-gray-800">Cadangan &amp; Pemulihan Konten (Backup / Restore)</h3>
+          <p class="text-[11px] text-gray-500 leading-relaxed">
+            Simpan cadangan seluruh tulisan, ebook, flyer, audio, video, dan pengaturan sebelum memperbarui tampilan atau fitur baru.
+          </p>
+          <button type="button" id="btn-backup-content-json" class="w-full py-2 px-3 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors">
+            Unduh Backup Konten (.json)
+          </button>
+          <div class="space-y-2 pt-1">
+            <label class="block text-[11px] font-medium text-gray-600">Mode Pemulihan Backup</label>
+            <select id="cfg-restore-mode" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-xs bg-white">
+              <option value="merge">Gabung dengan Konten Saat Ini (Aman)</option>
+              <option value="replace">Pulihkan Penuh dari Backup</option>
+            </select>
+            <label class="block w-full text-center py-2 px-3 text-xs font-semibold text-gray-700 bg-white hover:bg-stone-50 border border-stone-300 rounded-xl cursor-pointer transition-colors">
+              Impor / Pulihkan Konten (.json)
+              <input type="file" id="input-restore-backup" accept=".json,application/json" class="sr-only" />
+            </label>
+          </div>
+          <p id="cfg-backup-status" class="text-[11px] text-gray-500 leading-relaxed"></p>
+        </div>
       </div>
     `;
   }
@@ -1080,17 +1223,54 @@ window.SITE_DATA = ${serialized};
     }
   }
 
+  function openConfirmModal(opts) {
+    if (!els.confirmModal) return;
+    studio.pendingConfirmAction = typeof opts.onConfirm === "function" ? opts.onConfirm : null;
+
+    if (els.confirmBadge) {
+      els.confirmBadge.textContent = opts.badge || "Konfirmasi";
+      els.confirmBadge.className =
+        opts.badgeClass || "inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-stone-100 text-gray-700";
+    }
+    if (els.confirmTitle) els.confirmTitle.textContent = opts.title || "Konfirmasi Tindakan";
+    if (els.confirmMessage) els.confirmMessage.textContent = opts.message || "";
+    if (els.confirmAccept) {
+      els.confirmAccept.textContent = opts.confirmLabel || "Lanjutkan";
+      els.confirmAccept.className =
+        opts.confirmClass ||
+        "px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors";
+    }
+
+    els.confirmModal.classList.remove("hidden");
+    if (els.confirmCancel) els.confirmCancel.focus();
+  }
+
+  function closeConfirmModal() {
+    studio.pendingConfirmAction = null;
+    if (els.confirmModal) els.confirmModal.classList.add("hidden");
+  }
+
   function openPublishModal() {
     const d = studio.draftData;
     const t = d.tampilan || {};
-    const counts = ["tulisan", "ebook", "flyer", "audio", "video"]
-      .map((k) => `${(d[k] || []).length} ${App.TAB_META[k].navLabel}`)
+    const contentKeys = ["tulisan", "ebook", "flyer", "audio", "video"];
+    const counts = contentKeys
+      .map((k) => `${(d[k] || []).filter((i) => i.status !== "trash").length} ${App.TAB_META[k].navLabel}`)
       .join(" · ");
+    const trashTotal = contentKeys.reduce(
+      (sum, k) => sum + (d[k] || []).filter((i) => i.status === "trash").length,
+      0
+    );
 
     els.publishSummary.innerHTML = `
       <p><strong>Ringkasan Perubahan:</strong></p>
       <p>Tema: <span class="font-medium capitalize">${App.escapeHtml(t.warnaAksen || "emerald")}</span> · Font: <span class="font-medium capitalize">${App.escapeHtml(t.jenisFont || "editorial")}</span></p>
-      <p>Konten: ${App.escapeHtml(counts)}</p>
+      <p>Konten Aktif: ${App.escapeHtml(counts)}</p>
+      ${
+        trashTotal > 0
+          ? `<p class="text-amber-800 font-medium">${trashTotal} konten berada di daftar Hapus Sementara (dapat dipulihkan lagi).</p>`
+          : ""
+      }
       ${
         studio.pendingUploads.length
           ? `<p class="text-emerald-800 font-medium">${studio.pendingUploads.length} file media baru siap ikut dikirim ke GitHub.</p>`
@@ -1121,8 +1301,28 @@ window.SITE_DATA = ${serialized};
       els.headerStudioBtn.addEventListener("click", openAdminLoginModal);
     }
 
-    // Shortcut keyboard (Ctrl+Shift+E atau Alt+Shift+E) & hash #studio / #admin untuk pemilik membuka verifikasi
+    // Modal Konfirmasi Hapus (Batal / Tutup / Ya)
+    if (els.confirmClose) els.confirmClose.addEventListener("click", closeConfirmModal);
+    if (els.confirmCancel) els.confirmCancel.addEventListener("click", closeConfirmModal);
+    if (els.confirmModal) {
+      els.confirmModal.addEventListener("click", (e) => {
+        if (e.target === els.confirmModal) closeConfirmModal();
+      });
+    }
+    if (els.confirmAccept) {
+      els.confirmAccept.addEventListener("click", () => {
+        const fn = studio.pendingConfirmAction;
+        closeConfirmModal();
+        if (typeof fn === "function") fn();
+      });
+    }
+
+    // Shortcut keyboard (Ctrl+Shift+E atau Alt+Shift+E) & Escape untuk modal konfirmasi
     document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && els.confirmModal && !els.confirmModal.classList.contains("hidden")) {
+        closeConfirmModal();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey || e.altKey) && e.shiftKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
         openAdminLoginModal();
@@ -1314,6 +1514,95 @@ window.SITE_DATA = ${serialized};
           inputEl.value = dataUrl;
           inputEl.dataset.repoPublicUrl = publicUrl;
         }
+        return;
+      }
+
+      // Impor / Pulihkan konten dari file backup .json
+      if (e.target.id === "input-restore-backup" && e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
+        const modeSelect = document.getElementById("cfg-restore-mode");
+        const mode = modeSelect ? modeSelect.value : "merge";
+        const statusEl = document.getElementById("cfg-backup-status");
+
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const contentKeys = ["tulisan", "ebook", "flyer", "audio", "video"];
+          const isValidBackup =
+            parsed &&
+            typeof parsed === "object" &&
+            !Array.isArray(parsed) &&
+            (Boolean(parsed.profil) ||
+              Boolean(parsed.tampilan) ||
+              contentKeys.some((k) => Array.isArray(parsed[k])));
+
+          if (!isValidBackup) {
+            throw new Error("Format file backup tidak dikenali sebagai data Catatan Teduh.");
+          }
+
+          const cleanImported = { ...parsed };
+          delete cleanImported.exportedAt;
+          delete cleanImported.app;
+          delete cleanImported.version;
+
+          const normalizedImported = App.normalizeSiteData(cleanImported);
+          const currentNormalized = App.normalizeSiteData(studio.draftData);
+          let feedbackMsg = "";
+
+          if (mode === "merge") {
+            let addedCount = 0;
+            contentKeys.forEach((key) => {
+              const existingList = Array.isArray(currentNormalized[key]) ? currentNormalized[key] : [];
+              const importedList = Array.isArray(normalizedImported[key]) ? normalizedImported[key] : [];
+              const seenIds = new Set(existingList.map((item) => item && item.id).filter(Boolean));
+              const merged = [...existingList];
+
+              importedList.forEach((item, idx) => {
+                if (!item || typeof item !== "object") return;
+                const copy = App.deepClone(item);
+                if (!copy.id) {
+                  copy.id = `${key}-backup-${Date.now()}-${idx}`;
+                }
+                if (!seenIds.has(copy.id)) {
+                  seenIds.add(copy.id);
+                  merged.push(copy);
+                  addedCount += 1;
+                }
+              });
+
+              currentNormalized[key] = merged;
+            });
+
+            studio.draftData = App.normalizeSiteData(currentNormalized);
+            feedbackMsg =
+              addedCount > 0
+                ? `Berhasil menggabungkan ${addedCount} konten baru dari backup tanpa menghapus konten yang sudah ada.`
+                : "Semua konten di file backup sudah ada pada draft saat ini (tidak ada data yang dihapus).";
+          } else {
+            if (!normalizedImported.profil.emailAdmin) {
+              normalizedImported.profil.emailAdmin = getAllowedAdminEmail();
+            }
+            studio.draftData = normalizedImported;
+            feedbackMsg = "Seluruh konten dan pengaturan berhasil dipulihkan dari file backup.";
+          }
+
+          saveDraftToLocal();
+          renderStudioSidebar();
+          renderLivePreview();
+
+          const refreshedStatus = document.getElementById("cfg-backup-status");
+          if (refreshedStatus) {
+            refreshedStatus.className = "text-[11px] text-emerald-700 font-medium leading-relaxed";
+            refreshedStatus.textContent = feedbackMsg;
+          }
+        } catch (err) {
+          if (statusEl) {
+            statusEl.className = "text-[11px] text-red-700 leading-relaxed";
+            statusEl.textContent = `Gagal memulihkan backup: ${err.message}`;
+          }
+        } finally {
+          e.target.value = "";
+        }
       }
     });
 
@@ -1392,6 +1681,14 @@ window.SITE_DATA = ${serialized};
         return;
       }
 
+      const contentViewBtn = e.target.closest("[data-content-view]");
+      if (contentViewBtn) {
+        studio.contentView = contentViewBtn.dataset.contentView === "trash" ? "trash" : "active";
+        studio.editingItemId = null;
+        renderStudioSidebar();
+        return;
+      }
+
       if (e.target.closest("#btn-add-content-item")) {
         studio.editingItemId = "new";
         renderStudioSidebar();
@@ -1425,24 +1722,111 @@ window.SITE_DATA = ${serialized};
         return;
       }
 
-      const deleteBtn = e.target.closest("[data-delete-item]");
-      if (deleteBtn) {
-        const id = deleteBtn.dataset.deleteItem;
-        studio.draftData[studio.contentType] = (studio.draftData[studio.contentType] || []).filter((i) => i.id !== id);
-        saveDraftToLocal();
-        renderStudioSidebar();
-        renderLivePreview();
+      const softDeleteBtn = e.target.closest("[data-soft-delete-item]");
+      if (softDeleteBtn) {
+        const id = softDeleteBtn.dataset.softDeleteItem;
+        const list = studio.draftData[studio.contentType] || [];
+        const item = list.find((i) => i.id === id);
+        if (!item) return;
+
+        openConfirmModal({
+          badge: "Hapus Sementara",
+          badgeClass: "inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-amber-100 text-amber-800 border border-amber-200",
+          title: "Apakah konten akan dihapus sementara?",
+          message: `Konten "${item.judul || "Tanpa Judul"}" akan disembunyikan dari website dan dipindahkan ke daftar Hapus Sementara. Anda masih dapat memanggil atau memulihkannya kembali kapan saja.`,
+          confirmLabel: "Ya, Hapus Sementara",
+          confirmClass: "px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors",
+          onConfirm: () => {
+            item.previousStatus = item.status === "draft" ? "draft" : "published";
+            item.status = "trash";
+            item.deletedAt = new Date().toISOString();
+            saveDraftToLocal();
+            renderStudioSidebar();
+            renderLivePreview();
+          },
+        });
         return;
       }
 
-      const moveItemBtn = e.target.closest("[data-move-item]");
+      const restoreBtn = e.target.closest("[data-restore-item]");
+      if (restoreBtn) {
+        const id = restoreBtn.dataset.restoreItem;
+        const list = studio.draftData[studio.contentType] || [];
+        const item = list.find((i) => i.id === id);
+        if (item) {
+          item.status = item.previousStatus === "draft" ? "draft" : "published";
+          delete item.previousStatus;
+          delete item.deletedAt;
+          saveDraftToLocal();
+          renderStudioSidebar();
+          renderLivePreview();
+        }
+        return;
+      }
+
+      const hardDeleteBtn = e.target.closest("[data-hard-delete-item]");
+      if (hardDeleteBtn) {
+        const id = hardDeleteBtn.dataset.hardDeleteItem;
+        const list = studio.draftData[studio.contentType] || [];
+        const item = list.find((i) => i.id === id);
+        if (!item) return;
+
+        openConfirmModal({
+          badge: "Hapus Selamanya",
+          badgeClass: "inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-red-100 text-red-800 border border-red-200",
+          title: "Apakah konten akan dihapus selamanya?",
+          message: `Konten "${item.judul || "Tanpa Judul"}" akan dihapus secara permanen dan tidak dapat digunakan atau dipanggil kembali.`,
+          confirmLabel: "Ya, Hapus Selamanya",
+          confirmClass: "px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-red-700 hover:bg-red-800 rounded-xl transition-colors",
+          onConfirm: () => {
+            studio.draftData[studio.contentType] = (studio.draftData[studio.contentType] || []).filter((i) => i.id !== id);
+            saveDraftToLocal();
+            renderStudioSidebar();
+            renderLivePreview();
+          },
+        });
+        return;
+      }
+
+      if (e.target.closest("#btn-empty-category-trash")) {
+        const list = studio.draftData[studio.contentType] || [];
+        const trashCount = list.filter((i) => i.status === "trash").length;
+        if (!trashCount) return;
+
+        openConfirmModal({
+          badge: "Hapus Selamanya",
+          badgeClass: "inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-md bg-red-100 text-red-800 border border-red-200",
+          title: "Apakah semua sampah akan dihapus selamanya?",
+          message: `Sebanyak ${trashCount} konten di daftar Hapus Sementara pada kategori ini akan dihapus permanen dan tidak dapat dipanggil kembali.`,
+          confirmLabel: "Ya, Hapus Selamanya",
+          confirmClass: "px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-red-700 hover:bg-red-800 rounded-xl transition-colors",
+          onConfirm: () => {
+            studio.draftData[studio.contentType] = (studio.draftData[studio.contentType] || []).filter(
+              (i) => i.status !== "trash"
+            );
+            saveDraftToLocal();
+            renderStudioSidebar();
+            renderLivePreview();
+          },
+        });
+        return;
+      }
+
+      const moveItemBtn = e.target.closest("[data-move-item-id]");
       if (moveItemBtn) {
-        const idx = Number(moveItemBtn.dataset.moveItem);
+        const id = moveItemBtn.dataset.moveItemId;
         const dir = Number(moveItemBtn.dataset.dir);
         const list = studio.draftData[studio.contentType] || [];
-        const target = idx + dir;
-        if (target >= 0 && target < list.length) {
-          [list[idx], list[target]] = [list[target], list[idx]];
+        const activeIndices = [];
+        list.forEach((it, idx) => {
+          if (it.status !== "trash") activeIndices.push(idx);
+        });
+        const pos = activeIndices.findIndex((idx) => list[idx].id === id);
+        const targetPos = pos + dir;
+        if (pos >= 0 && targetPos >= 0 && targetPos < activeIndices.length) {
+          const a = activeIndices[pos];
+          const b = activeIndices[targetPos];
+          [list[a], list[b]] = [list[b], list[a]];
           saveDraftToLocal();
           renderStudioSidebar();
           renderLivePreview();
@@ -1482,11 +1866,41 @@ window.SITE_DATA = ${serialized};
         return;
       }
 
+      if (e.target.closest("#btn-backup-content-json")) {
+        const normalized = App.normalizeSiteData(studio.draftData);
+        const backupPayload = {
+          app: "Catatan Teduh",
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          ...normalized,
+        };
+        const blob = new Blob([`${JSON.stringify(backupPayload, null, 2)}\n`], {
+          type: "application/json;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const dateSlug = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `backup-konten-catatanteduh-${dateSlug}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+        const statusEl = document.getElementById("cfg-backup-status");
+        if (statusEl) {
+          statusEl.className = "text-[11px] text-emerald-700 font-medium leading-relaxed";
+          statusEl.textContent = "File backup konten (.json) berhasil diunduh.";
+        }
+        return;
+      }
+
       if (e.target.closest("#btn-reset-draft-local")) {
         localStorage.removeItem(STORAGE_DRAFT_KEY);
         const fresh = App.fetchFreshSiteData ? await App.fetchFreshSiteData() : null;
-        if (fresh) window.SITE_DATA = App.deepClone(fresh);
-        studio.draftData = App.deepClone(fresh || window.SITE_DATA || {});
+        const normalizedFresh = App.normalizeSiteData(fresh || window.SITE_DATA || {});
+        if (fresh) window.SITE_DATA = App.deepClone(normalizedFresh);
+        studio.draftData = App.deepClone(normalizedFresh);
         studio.pendingUploads = [];
         studio.hasUnsavedChanges = false;
         updateDraftStatusBadge("Draft direset ke versi server");
@@ -1584,6 +1998,180 @@ window.SITE_DATA = ${serialized};
     els.publishModal.addEventListener("click", (e) => {
       if (e.target === els.publishModal) els.publishModal.classList.add("hidden");
     });
+
+    function crc32Bytes(bytes) {
+      let crc = 0xffffffff;
+      for (let i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i];
+        for (let j = 0; j < 8; j++) {
+          crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+        }
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function buildZipBlob(entries) {
+      const encoder = new TextEncoder();
+      const localParts = [];
+      const centralParts = [];
+      let offset = 0;
+
+      entries.forEach((entry) => {
+        const nameBytes = encoder.encode(entry.path);
+        const dataBytes = entry.bytes instanceof Uint8Array ? entry.bytes : encoder.encode(String(entry.text || ""));
+        const crc = crc32Bytes(dataBytes);
+        const size = dataBytes.length;
+
+        const localHeader = new ArrayBuffer(30 + nameBytes.length);
+        const lv = new DataView(localHeader);
+        lv.setUint32(0, 0x04034b50, true);
+        lv.setUint16(4, 20, true);
+        lv.setUint16(6, 0x0800, true);
+        lv.setUint16(8, 0, true);
+        lv.setUint16(10, 0, true);
+        lv.setUint16(12, 0x5421, true);
+        lv.setUint32(14, crc, true);
+        lv.setUint32(18, size, true);
+        lv.setUint32(22, size, true);
+        lv.setUint16(26, nameBytes.length, true);
+        lv.setUint16(28, 0, true);
+        new Uint8Array(localHeader, 30).set(nameBytes);
+
+        localParts.push(new Uint8Array(localHeader), dataBytes);
+
+        const centralHeader = new ArrayBuffer(46 + nameBytes.length);
+        const cv = new DataView(centralHeader);
+        cv.setUint32(0, 0x02014b50, true);
+        cv.setUint16(4, 20, true);
+        cv.setUint16(6, 20, true);
+        cv.setUint16(8, 0x0800, true);
+        cv.setUint16(10, 0, true);
+        cv.setUint16(12, 0, true);
+        cv.setUint16(14, 0x5421, true);
+        cv.setUint32(16, crc, true);
+        cv.setUint32(20, size, true);
+        cv.setUint32(24, size, true);
+        cv.setUint16(28, nameBytes.length, true);
+        cv.setUint16(30, 0, true);
+        cv.setUint16(32, 0, true);
+        cv.setUint16(34, 0, true);
+        cv.setUint16(36, 0, true);
+        cv.setUint32(38, 0, true);
+        cv.setUint32(42, offset, true);
+        new Uint8Array(centralHeader, 46).set(nameBytes);
+
+        centralParts.push(new Uint8Array(centralHeader));
+        offset += 30 + nameBytes.length + size;
+      });
+
+      const cdSize = centralParts.reduce((sum, p) => sum + p.length, 0);
+      const eocd = new ArrayBuffer(22);
+      const ev = new DataView(eocd);
+      ev.setUint32(0, 0x06054b50, true);
+      ev.setUint16(4, 0, true);
+      ev.setUint16(6, 0, true);
+      ev.setUint16(8, entries.length, true);
+      ev.setUint16(10, entries.length, true);
+      ev.setUint32(12, cdSize, true);
+      ev.setUint32(16, offset, true);
+      ev.setUint16(20, 0, true);
+
+      return new Blob([...localParts, ...centralParts, new Uint8Array(eocd)], { type: "application/zip" });
+    }
+
+    function base64ToUint8Array(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    async function fetchTextFirst(urls) {
+      const bust = Date.now();
+      for (const u of urls) {
+        try {
+          const res = await fetch(`${u}?t=${bust}`, { cache: "no-store" });
+          if (res.ok) return await res.text();
+        } catch (_e) {}
+      }
+      throw new Error(`Gagal mengambil file ${urls[0]}`);
+    }
+
+    async function exportProjectZip(btnEl, { includeData }) {
+      if (!btnEl) return;
+      const origText = btnEl.textContent;
+      btnEl.disabled = true;
+      btnEl.textContent = "Menyiapkan arsip .zip...";
+      try {
+        const rawHtml = await fetchTextFirst(["/index.html", "/"]);
+        const cleanHtml = rawHtml.replace(/\s*<script[^>]*src="\/@vite\/client"[^>]*><\/script>/gi, "");
+        const appJs = await fetchTextFirst(["/app.js", "/public/app.js"]);
+        const studioJs = await fetchTextFirst(["/studio.js", "/public/studio.js"]);
+
+        const entries = [
+          { path: "index.html", text: cleanHtml },
+          { path: "public/app.js", text: appJs },
+          { path: "public/studio.js", text: studioJs },
+        ];
+
+        if (includeData) {
+          const exportData = App.normalizeSiteData(studio.draftData);
+          if (studio.pendingUploads.length) {
+            let updatedJsonStr = JSON.stringify(exportData);
+            studio.pendingUploads.forEach((up) => {
+              if (up.dataUrl && updatedJsonStr.includes(up.dataUrl)) {
+                updatedJsonStr = updatedJsonStr.split(up.dataUrl).join(up.publicUrl);
+              }
+            });
+            Object.assign(exportData, JSON.parse(updatedJsonStr));
+          }
+
+          entries.push(
+            { path: "public/data.json", text: generateDataJsonContent(exportData) },
+            { path: "public/data.js", text: generateDataJsContent(exportData) }
+          );
+
+          studio.pendingUploads.forEach((up) => {
+            if (up.base64Content) {
+              entries.push({ path: up.repoPath, bytes: base64ToUint8Array(up.base64Content) });
+            }
+          });
+        }
+
+        const zipBlob = buildZipBlob(entries);
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = includeData ? "catatanteduh-lengkap.zip" : "catatanteduh-update-tampilan.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+        els.publishGhResult.className = "text-xs rounded-lg p-3 leading-relaxed bg-emerald-50 text-emerald-950 border border-emerald-200";
+        els.publishGhResult.innerHTML = includeData
+          ? "<strong>Paket Lengkap (.zip) berhasil diunduh.</strong> Berisi kode tampilan sekaligus <code class=\"bg-white/80 px-1 rounded\">public/data.json</code> &amp; <code class=\"bg-white/80 px-1 rounded\">public/data.js</code> terbaru."
+          : "<strong>Paket Update Tampilan (.zip) berhasil diunduh.</strong> Hanya berisi <code class=\"bg-white/80 px-1 rounded\">index.html</code>, <code class=\"bg-white/80 px-1 rounded\">public/app.js</code>, dan <code class=\"bg-white/80 px-1 rounded\">public/studio.js</code> sehingga konten lama Anda di GitHub tetap aman.";
+        els.publishGhResult.classList.remove("hidden");
+      } catch (err) {
+        els.publishGhResult.className = "text-xs rounded-lg p-3 bg-red-50 text-red-900 border border-red-200";
+        els.publishGhResult.textContent = `Gagal membuat ZIP: ${err.message}`;
+        els.publishGhResult.classList.remove("hidden");
+      } finally {
+        btnEl.disabled = false;
+        btnEl.textContent = origText;
+      }
+    }
+
+    if (els.btnDownloadZipUi) {
+      els.btnDownloadZipUi.addEventListener("click", () => exportProjectZip(els.btnDownloadZipUi, { includeData: false }));
+    }
+
+    if (els.btnDownloadZip) {
+      els.btnDownloadZip.addEventListener("click", () => exportProjectZip(els.btnDownloadZip, { includeData: true }));
+    }
 
     if (els.btnDownloadDatajson) {
       els.btnDownloadDatajson.addEventListener("click", () => {
@@ -1727,7 +2315,7 @@ window.SITE_DATA = ${serialized};
   // Sinkronkan draftData jika server mengembalikan data.json terbaru dan tidak ada draft lokal tertunda
   window.addEventListener("catatanteduh:data-loaded", (e) => {
     if (!localStorage.getItem(STORAGE_DRAFT_KEY) && !studio.isOpen && e.detail) {
-      studio.draftData = App.deepClone(e.detail);
+      studio.draftData = App.normalizeSiteData(e.detail);
     }
   });
 

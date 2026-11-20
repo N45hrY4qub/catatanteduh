@@ -587,6 +587,58 @@
     </div>
 
     <!-- =======================================================================
+         MODAL KONFIRMASI HAPUS (HAPUS SEMENTARA / HAPUS SELAMANYA)
+         ======================================================================= -->
+    <div
+      id="studio-confirm-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="studio-confirm-title"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/60 backdrop-blur-sm"
+    >
+      <div class="w-full max-w-md bg-[#FAF9F6] border border-stone-200 rounded-2xl shadow-2xl p-6 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <span
+              id="studio-confirm-badge"
+              class="inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-md"
+            ></span>
+            <h2 id="studio-confirm-title" class="font-theme-display text-xl font-medium text-[#1F2937]"></h2>
+          </div>
+          <button
+            type="button"
+            id="studio-confirm-close"
+            class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-stone-200/60 rounded-lg"
+            aria-label="Tutup dialog konfirmasi"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p id="studio-confirm-message" class="text-xs sm:text-sm text-gray-600 leading-relaxed"></p>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            id="studio-confirm-cancel"
+            class="px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-xl transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            id="studio-confirm-accept"
+            class="px-4 py-2 text-xs sm:text-sm font-semibold text-white rounded-xl transition-colors"
+          >
+            Lanjutkan
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =======================================================================
          MODAL PUBLISH & SINKRONISASI GITHUB / CLOUDFLARE PAGES
          ======================================================================= -->
     <div
@@ -639,10 +691,26 @@
 
         <!-- Panel Alternatif Ekspor Manual -->
         <div class="bg-stone-100/70 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-3">
-          <h3 class="text-sm font-semibold text-[#1F2937]">2. Alternatif Manual (Unduh / Salin Data)</h3>
+          <h3 class="text-sm font-semibold text-[#1F2937]">2. Alternatif Manual (Unduh Utuh / Satuan)</h3>
           <p class="text-xs text-gray-600 leading-relaxed">
-            Jika belum menghubungkan token GitHub, unduh file <code class="bg-white px-1 rounded">data.json</code> / <code class="bg-white px-1 rounded">data.js</code> hasil editan Anda lalu unggah ke folder <code class="bg-white px-1 rounded">public/</code> di repositori Anda.
+            Pilih <strong>Update Tampilan Saja</strong> jika Anda hanya ingin memperbarui desain/fitur tanpa menimpa tulisan, gambar, audio, dan video yang sudah tayang di GitHub.
           </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              id="btn-download-zip-ui"
+              class="py-2.5 px-3 text-xs font-semibold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-colors"
+            >
+              Update Tampilan Saja (.zip)
+            </button>
+            <button
+              type="button"
+              id="btn-download-zip"
+              class="py-2.5 px-3 text-xs font-semibold text-gray-800 bg-white hover:bg-stone-50 border border-stone-300 rounded-xl transition-colors"
+            >
+              Paket Lengkap + Data (.zip)
+            </button>
+          </div>
           <div class="flex flex-wrap gap-2">
             <button
               type="button"
