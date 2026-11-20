@@ -1,0 +1,6 @@
+{
+  "name": "Catatan Teduh — Ruang Berbagi Ilmu & Nasihat Kehidupan",
+  "description": "Website pribadi untuk berbagi tulisan refleksi, ebook gratis, flyer nasihat, audio kajian, video, dan ruang tanya jawab yang tenang dan nyaman dibaca.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

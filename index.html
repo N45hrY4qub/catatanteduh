@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="id" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Catatan Teduh — Ruang Berbagi Ilmu &amp; Nasihat Kehidupan</title>
+    <meta
+      name="description"
+      content="Website pribadi untuk berbagi tulisan refleksi, ebook gratis, flyer nasihat, audio kajian, video, dan ruang tanya jawab yang tenang dan nyaman dibaca."
+    />
+    <meta
+      property="og:title"
+      content="Catatan Teduh — Ruang Berbagi Ilmu & Nasihat Kehidupan"
+    />
+    <meta
+      property="og:description"
+      content="Website pribadi untuk berbagi tulisan refleksi, ebook gratis, flyer nasihat, audio kajian, video, dan ruang tanya jawab yang tenang dan nyaman dibaca."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google Fonts: Fraunces, Plus Jakarta Sans, Source Serif 4 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ivory: "#FAF9F6",
+              paper: "#F3F1EC",
+              ink: "#1F2937",
+            },
+            fontFamily: {
+              display: ['"Fraunces"', "Georgia", "serif"],
+              sans: ['"Plus Jakarta Sans"', "system-ui", "sans-serif"],
+              prose: ['"Source Serif 4"', "Georgia", "serif"],
+            },
+            boxShadow: {
+              soft: "0 1px 2px rgba(31, 41, 55, 0.04), 0 8px 24px -12px rgba(31, 41, 55, 0.08)",
+              book: "0 18px 34px -14px rgba(31, 41, 55, 0.25), 0 4px 10px -4px rgba(31, 41, 55, 0.1)",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      :root {
+        --accent: #047857;
+        --accent-hover: #065f46;
+        --accent-text: #065f46;
+        --accent-soft: #ecfdf5;
+        --accent-border: #a7f3d0;
+        --accent-glow: rgba(16, 185, 129, 0.08);
+        --font-heading: "Fraunces", Georgia, serif;
+        --font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+      }
+
+      body {
+        background-color: #faf9f6;
+        color: #1f2937;
+        font-family: var(--font-body);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      .font-theme-display {
+        font-family: var(--font-heading);
+      }
+
+      .theme-text-accent {
+        color: var(--accent-text);
+      }
+
+      .theme-bg-accent {
+        background-color: var(--accent);
+      }
+      .theme-bg-accent:hover {
+        background-color: var(--accent-hover);
+      }
+
+      .theme-bg-soft {
+        background-color: var(--accent-soft);
+      }
+
+      .theme-border-soft {
+        border-color: var(--accent-border);
+      }
+
+      .theme-input-focus:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 4px var(--accent-glow);
+      }
+
+      /* Gaya kartu dinamis dari Studio Visual */
+      .site-card {
+        transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms ease, box-shadow 200ms ease;
+      }
+      [data-card-style="halus"] .site-card {
+        background-color: #ffffff;
+        border: 1px solid rgba(231, 229, 228, 0.9);
+        box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04), 0 8px 24px -12px rgba(31, 41, 55, 0.08);
+      }
+      [data-card-style="minimal"] .site-card {
+        background-color: #ffffff;
+        border: 1px solid rgba(214, 211, 209, 0.85);
+        box-shadow: none;
+      }
+      [data-card-style="hangat"] .site-card {
+        background-color: #f4f1ea;
+        border: 1px solid rgba(214, 211, 209, 0.7);
+        box-shadow: none;
+      }
+
+      .headline-balance {
+        text-wrap: balance;
+      }
+
+      .prose-dropcap::first-letter {
+        font-family: var(--font-heading);
+        font-size: 3.25rem;
+        line-height: 0.85;
+        float: left;
+        margin-right: 0.7rem;
+        margin-top: 0.22rem;
+        color: var(--accent-text);
+        font-weight: 500;
+      }
+
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      @keyframes panelFadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .panel-enter {
+        animation: panelFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      audio {
+        height: 44px;
+        border-radius: 0.625rem;
+        accent-color: var(--accent);
+      }
+
+      /* Latar studio dot-grid saat preview aktif */
+      .studio-canvas-bg {
+        background-color: #e7e5e4;
+        background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+        background-size: 18px 18px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body data-card-style="halus" class="min-h-screen flex flex-col bg-[#FAF9F6] text-[#1F2937] selection:bg-emerald-100 selection:text-emerald-900">
+    <!-- =======================================================================
+         BILAH STUDIO BUILDER ALA ELEMENTOR (MUNCUL SAAT MODE STUDIO AKTIF)
+         ======================================================================= -->
+    <div id="studio-shell" class="hidden fixed inset-0 z-40 flex flex-col bg-[#FAF9F6]">
+      <!-- Top Studio Bar -->
+      <div class="h-14 px-4 bg-[#1F2937] text-white border-b border-gray-800 flex items-center justify-between gap-4 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            id="studio-exit-btn"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-200 hover:text-white bg-white/10 hover:bg-white/15 rounded-lg transition-colors whitespace-nowrap shrink-0"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>Lihat Situs</span>
+          </button>
+          <div class="min-w-0 hidden sm:block">
+            <p class="text-sm font-semibold truncate">Studio Visual</p>
+          </div>
+          <span id="studio-draft-status" class="text-xs text-amber-300 truncate"></span>
+        </div>
+
+        <!-- Viewport Switcher (Desktop / Tablet / HP) -->
+        <div class="hidden md:flex items-center gap-1 bg-white/10 p-1 rounded-lg" role="group" aria-label="Ukuran layar pratinjau">
+          <button
+            type="button"
+            data-preview-device="desktop"
+            class="device-btn px-3 py-1 text-xs font-medium rounded-md bg-white text-gray-900 transition-colors"
+          >
+            Desktop
+          </button>
+          <button
+            type="button"
+            data-preview-device="tablet"
+            class="device-btn px-3 py-1 text-xs font-medium rounded-md text-gray-300 hover:text-white transition-colors"
+          >
+            Tablet
+          </button>
+          <button
+            type="button"
+            data-preview-device="mobile"
+            class="device-btn px-3 py-1 text-xs font-medium rounded-md text-gray-300 hover:text-white transition-colors"
+          >
+            HP
+          </button>
+        </div>
+
+        <!-- Aksi Preview, Simpan Draft, Publish & Keluar Admin -->
+        <div class="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            id="studio-toggle-sidebar"
+            class="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-200 hover:text-white bg-white/10 hover:bg-white/15 rounded-lg transition-colors whitespace-nowrap"
+          >
+            <span>Layar Penuh</span>
+          </button>
+          <button
+            type="button"
+            id="studio-save-draft"
+            class="px-3 py-1.5 text-xs font-medium text-gray-100 bg-white/10 hover:bg-white/20 rounded-lg transition-colors whitespace-nowrap"
+          >
+            Simpan Draft
+          </button>
+          <button
+            type="button"
+            id="studio-open-publish"
+            class="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap"
+          >
+            Publish
+          </button>
+          <button
+            type="button"
+            id="studio-logout-btn"
+            class="px-2.5 py-1.5 text-xs font-medium text-red-200 hover:text-white hover:bg-red-500/25 rounded-lg transition-colors whitespace-nowrap"
+            title="Keluar dari akun admin"
+          >
+            Keluar
+          </button>
+        </div>
+      </div>
+
+      <!-- Area Split: Sidebar Editor Kiri + Live Preview Kanan -->
+      <div class="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+        <!-- Sidebar Inspector Kiri -->
+        <aside
+          id="studio-sidebar"
+          class="w-full lg:w-[410px] bg-white border-b lg:border-b-0 lg:border-r border-stone-200 flex flex-col shrink-0 max-h-[48vh] lg:max-h-none"
+        >
+          <!-- Sub-tab Studio -->
+          <div class="grid grid-cols-4 border-b border-stone-200 bg-stone-50/70 shrink-0 text-xs font-medium">
+            <button type="button" data-studio-tab="tampilan" class="studio-nav-tab py-3 px-2 border-b-2 border-emerald-700 text-emerald-800 bg-white">
+              Tampilan
+            </button>
+            <button type="button" data-studio-tab="beranda" class="studio-nav-tab py-3 px-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900">
+              Beranda
+            </button>
+            <button type="button" data-studio-tab="konten" class="studio-nav-tab py-3 px-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900">
+              Konten
+            </button>
+            <button type="button" data-studio-tab="pengaturan" class="studio-nav-tab py-3 px-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900">
+              GitHub
+            </button>
+          </div>
+
+          <!-- Isi Form Sidebar -->
+          <div id="studio-panel-body" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm"></div>
+        </aside>
+
+        <!-- Kanvas Live Preview Kanan -->
+        <div class="flex-1 studio-canvas-bg overflow-auto p-3 sm:p-6 flex flex-col items-center">
+          <!-- Bar Info Preview -->
+          <div class="w-full max-w-5xl mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-700 bg-white/90 border border-stone-300/70 rounded-xl px-4 py-2 backdrop-blur-xs">
+            <span class="font-medium">Pratinjau Langsung (Live Preview)</span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                data-preview-mode="draft"
+                class="preview-mode-btn px-2.5 py-1 rounded-md font-medium bg-emerald-700 text-white"
+              >
+                Lihat Draft + Tayang
+              </button>
+              <button
+                type="button"
+                data-preview-mode="public"
+                class="preview-mode-btn px-2.5 py-1 rounded-md font-medium text-gray-600 hover:bg-stone-100"
+              >
+                Lihat Versi Publik
+              </button>
+            </div>
+          </div>
+
+          <!-- Bingkai Responsif Live Preview (Iframe / Live Mirror Container) -->
+          <div
+            id="studio-preview-frame"
+            class="w-full bg-[#FAF9F6] border border-stone-300/90 rounded-2xl shadow-xl overflow-hidden transition-all duration-200 flex-1 min-h-[520px] flex flex-col"
+          >
+            <div id="studio-preview-mount" class="flex-1 overflow-y-auto"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =======================================================================
+         HALAMAN UTAMA WEBSITE (PORTAL PUBLIK / PRATINJAU)
+         ======================================================================= -->
+    <div id="public-site-wrapper" class="min-h-screen flex flex-col relative">
+      <div
+        id="hero-ambient-glow"
+        aria-hidden="true"
+        class="pointer-events-none fixed inset-x-0 top-0 h-[420px] -z-10"
+        style="background: radial-gradient(ellipse 80% 60% at 50% -10%, var(--accent-glow), transparent);"
+      ></div>
+
+      <!-- TOP NAVIGATION BAR (Navigasi Utama Tunggal + Studio Editor Khusus Admin) -->
+      <header class="sticky top-0 z-30 border-b border-stone-200/75 bg-[#FAF9F6]/85 backdrop-blur-md">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 sm:gap-8">
+          <a
+            href="#beranda"
+            id="brand-wordmark"
+            class="font-theme-display text-xl font-medium tracking-tight text-[#1F2937] hover:opacity-80 transition-opacity whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 rounded"
+          >
+            Catatan Teduh
+          </a>
+
+          <nav id="top-nav-links" aria-label="Navigasi utama" class="hidden md:flex items-center gap-7 text-sm font-medium text-gray-600"></nav>
+
+          <div class="flex items-center gap-2.5 shrink-0">
+            <!-- Tombol Studio Editor: Tersembunyi untuk umum, hanya tampil jika akun benyaqub@gmail.com terverifikasi -->
+            <button
+              type="button"
+              id="header-studio-btn"
+              class="hidden items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium theme-text-accent theme-bg-soft border theme-border-soft rounded-xl transition-colors whitespace-nowrap shrink-0"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>Kelola di Studio Editor</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-cta-diskusi"
+              class="px-4 py-2 text-sm font-medium text-white theme-bg-accent rounded-xl shadow-xs transition-all whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-700"
+            >
+              Ruang Diskusi
+            </button>
+
+            <button
+              type="button"
+              id="mobile-menu-toggle"
+              aria-expanded="false"
+              aria-controls="mobile-nav-drawer"
+              aria-label="Buka menu navigasi"
+              class="md:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-stone-200/60 rounded-xl transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menu Navigasi Mobile -->
+        <div id="mobile-nav-drawer" class="hidden md:hidden border-t border-stone-200/80 bg-[#FAF9F6] px-4 py-3 space-y-1"></div>
+      </header>
+
+      <!-- BERANDA / PROFIL SINGKAT & SOROTAN -->
+      <main class="flex-1">
+        <section id="beranda" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8 sm:pt-14 sm:pb-12">
+          <div id="hero-grid" class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+            <div id="hero-left-col" class="lg:col-span-7 flex flex-col justify-between">
+              <div>
+                <p id="hero-kicker" class="text-xs font-semibold tracking-wider theme-text-accent mb-3">
+                  Ruang Berbagi Ilmu · Edisi Terbuka
+                </p>
+                <h1
+                  id="hero-title"
+                  class="font-theme-display text-3xl sm:text-4xl lg:text-[2.85rem] font-medium leading-[1.14] tracking-tight text-[#1F2937] headline-balance mb-2.5"
+                >
+                  Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang
+                </h1>
+                <p
+                  id="hero-subtitle"
+                  class="font-theme-display italic text-base sm:text-lg theme-text-accent mb-4"
+                >
+                  — ruang berbagi ilmu &amp; nasihat kehidupan —
+                </p>
+                <p
+                  id="hero-desc"
+                  class="text-base sm:text-[17px] leading-relaxed text-gray-600 max-w-2xl mb-7"
+                ></p>
+
+                <!-- Kotak Pencarian Real-Time -->
+                <div id="hero-search-wrap" class="max-w-xl">
+                  <label for="search-input" class="sr-only">Cari judul atau topik konten</label>
+                  <div class="relative flex items-center group">
+                    <svg
+                      class="w-5 h-5 text-gray-400 absolute left-4 pointer-events-none"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.75"
+                        d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <input
+                      id="search-input"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Cari tulisan, ebook, flyer, audio, atau video..."
+                      class="w-full h-12 pl-12 pr-20 bg-white border border-stone-200/90 rounded-2xl shadow-soft text-sm sm:text-base text-[#1F2937] placeholder:text-gray-400 focus:outline-none theme-input-focus transition-all"
+                    />
+                    <kbd
+                      id="search-shortcut-hint"
+                      aria-hidden="true"
+                      class="hidden sm:inline-flex items-center justify-center absolute right-3.5 px-2 py-0.5 text-[11px] font-medium text-gray-400 bg-stone-100 border border-stone-200 rounded-md pointer-events-none"
+                    >
+                      /
+                    </kbd>
+                    <button
+                      id="search-clear"
+                      type="button"
+                      class="hidden absolute right-3 px-2.5 py-1 text-xs font-medium text-gray-600 rounded-lg bg-stone-100 hover:bg-stone-200 transition-colors"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                  <p id="search-status" class="mt-2.5 text-xs text-gray-500 min-h-[1rem]" aria-live="polite"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Kolom Kanan: Kartu Sorotan Pilihan -->
+            <aside id="hero-spotlight-wrap" class="lg:col-span-5 flex">
+              <div
+                id="hero-spotlight"
+                class="w-full site-card rounded-2xl p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden"
+              ></div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- AREA KONTEN KATEGORI AKTIF -->
+        <section id="konten-utama" aria-label="Daftar konten" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+          <div id="active-section-header" class="flex items-baseline justify-between gap-4 pb-4 mb-7 border-b border-stone-200/80"></div>
+          <div id="tab-content-root" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <!-- FOOTER -->
+      <footer class="border-t border-stone-200/80 bg-[#F3F1EC]/60 mt-auto">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm text-gray-500">
+          <p id="footer-copy"></p>
+          <div class="flex flex-wrap items-center gap-6">
+            <button type="button" data-footer-tab="tulisan" class="hover:text-[#1F2937] transition-colors whitespace-nowrap">
+              Arsip Tulisan
+            </button>
+            <button type="button" data-footer-tab="ebook" class="hover:text-[#1F2937] transition-colors whitespace-nowrap">
+              Unduh Ebook
+            </button>
+            <button type="button" data-footer-tab="diskusi" class="hover:text-[#1F2937] transition-colors whitespace-nowrap">
+              Tanya Jawab
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <!-- =======================================================================
+         MODAL LOGIN ADMIN STUDIO (GITHUB REPO AUTH / MODE PRATINJAU LOKAL)
+         ======================================================================= -->
+    <div
+      id="admin-login-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-login-title"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/60 backdrop-blur-sm"
+    >
+      <div class="w-full max-w-md bg-[#FAF9F6] border border-stone-200 rounded-2xl shadow-2xl p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p class="text-xs font-semibold theme-text-accent mb-1">Akses Pemilik Website</p>
+            <h2 id="admin-login-title" class="font-theme-display text-2xl font-medium text-[#1F2937]">
+              Masuk Studio Editor
+            </h2>
+          </div>
+          <button
+            type="button"
+            id="admin-login-close"
+            class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-stone-200/60 rounded-lg"
+            aria-label="Tutup dialog login"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p class="text-sm text-gray-600 leading-relaxed mb-5">
+          Fitur <strong>Kelola di Studio Editor</strong> khusus hanya untuk akun pemilik website (<code class="bg-stone-100 px-1 rounded text-xs">benyaqub@gmail.com</code>). Verifikasi akun Anda untuk memunculkan menu Studio di header.
+        </p>
+
+        <form id="admin-login-form" class="space-y-4">
+          <div>
+            <label for="login-admin-email" class="block text-xs font-medium text-gray-700 mb-1">
+              Email Akun Pemilik
+            </label>
+            <input
+              id="login-admin-email"
+              type="email"
+              required
+              placeholder="Masukkan email pemilik website..."
+              class="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none theme-input-focus"
+            />
+          </div>
+
+          <div>
+            <label for="login-gh-repo" class="block text-xs font-medium text-gray-700 mb-1">
+              Repositori GitHub (username/nama-repo)
+            </label>
+            <input
+              id="login-gh-repo"
+              type="text"
+              placeholder="N45hrY4qub/catatanteduh"
+              class="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none theme-input-focus"
+            />
+          </div>
+
+          <div>
+            <label for="login-gh-token" class="block text-xs font-medium text-gray-700 mb-1">
+              GitHub Personal Access Token (opsional saat pratinjau, wajib saat auto-publish)
+            </label>
+            <input
+              id="login-gh-token"
+              type="password"
+              placeholder="github_pat_... atau ghp_..."
+              class="w-full px-3.5 py-2.5 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none theme-input-focus"
+            />
+          </div>
+
+          <p id="login-error-msg" class="hidden text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+          <div class="pt-2">
+            <button
+              type="submit"
+              id="login-submit-btn"
+              class="w-full py-2.5 px-4 text-sm font-semibold text-white theme-bg-accent rounded-xl transition-colors"
+            >
+              Verifikasi Akun &amp; Buka Studio
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- =======================================================================
+         MODAL PUBLISH & SINKRONISASI GITHUB / CLOUDFLARE PAGES
+         ======================================================================= -->
+    <div
+      id="publish-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publish-modal-title"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/60 backdrop-blur-sm"
+    >
+      <div class="w-full max-w-lg bg-[#FAF9F6] border border-stone-200 rounded-2xl shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p class="text-xs font-semibold text-emerald-800 mb-1">Publikasi Perubahan</p>
+            <h2 id="publish-modal-title" class="font-theme-display text-2xl font-medium text-[#1F2937]">
+              Terbitkan ke Website Live
+            </h2>
+          </div>
+          <button
+            type="button"
+            id="publish-modal-close"
+            class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-stone-200/60 rounded-lg"
+            aria-label="Tutup jendela publish"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div id="publish-summary" class="bg-white border border-stone-200 rounded-xl p-4 text-xs sm:text-sm text-gray-600 space-y-1.5 mb-5"></div>
+
+        <!-- Panel Publish Langsung ke GitHub -->
+        <div class="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 mb-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-[#1F2937]">1. Publish Otomatis ke GitHub &amp; Cloudflare Pages</h3>
+            <span id="publish-gh-badge" class="text-xs font-medium text-gray-500"></span>
+          </div>
+          <p class="text-xs text-gray-600 leading-relaxed">
+            Mengirim pembaruan <code class="bg-stone-100 px-1 rounded">data.js</code> (dan media yang baru diunggah) langsung ke repositori GitHub Anda sehingga Cloudflare Pages otomatis deploy ulang.
+          </p>
+          <div id="publish-gh-result" class="hidden text-xs rounded-lg p-3"></div>
+          <button
+            type="button"
+            id="btn-publish-github"
+            class="w-full py-2.5 px-4 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-xl transition-colors"
+          >
+            Publish ke GitHub Sekarang
+          </button>
+        </div>
+
+        <!-- Panel Alternatif Ekspor Manual -->
+        <div class="bg-stone-100/70 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-3">
+          <h3 class="text-sm font-semibold text-[#1F2937]">2. Alternatif Manual (Unduh / Salin data.js)</h3>
+          <p class="text-xs text-gray-600 leading-relaxed">
+            Jika belum menghubungkan token GitHub, unduh file <code class="bg-white px-1 rounded">data.js</code> hasil editan Anda lalu unggah ke folder <code class="bg-white px-1 rounded">public/</code> atau root repositori Anda.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              id="btn-download-datajs"
+              class="flex-1 py-2 px-3.5 text-xs font-semibold text-emerald-900 bg-white hover:bg-emerald-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Unduh data.js
+            </button>
+            <button
+              type="button"
+              id="btn-copy-datajs"
+              class="flex-1 py-2 px-3.5 text-xs font-semibold text-gray-700 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Salin Kode data.js
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =======================================================================
+         MODAL BACA NYAMAN (TAB 1 - TULISAN)
+         ======================================================================= -->
+    <div
+      id="article-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-article-title"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-gray-950/60 backdrop-blur-sm"
+    >
+      <div
+        id="article-modal-panel"
+        class="relative w-full max-w-2xl max-h-[90vh] bg-[#FAF9F6] border border-stone-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      >
+        <div class="h-1 w-full bg-stone-200/70 shrink-0">
+          <div id="modal-read-progress" class="h-full theme-bg-accent w-0 transition-[width] duration-100"></div>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 px-5 sm:px-8 py-3.5 border-b border-stone-200/80 bg-white/85 backdrop-blur-sm shrink-0">
+          <div class="flex items-center gap-1" role="group" aria-label="Pengaturan ukuran huruf">
+            <span class="text-xs text-gray-500 mr-1.5 hidden sm:inline">Ukuran teks:</span>
+            <button type="button" data-font-size="sm" class="font-size-btn px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 text-gray-600 transition-colors">A-</button>
+            <button type="button" data-font-size="md" class="font-size-btn px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 text-gray-600 transition-colors">A</button>
+            <button type="button" data-font-size="lg" class="font-size-btn px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 text-gray-600 transition-colors">A+</button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button
+              id="modal-copy-link"
+              type="button"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 bg-stone-100 hover:bg-stone-200/80 rounded-lg transition-colors whitespace-nowrap"
+            >
+              <span id="modal-copy-label">Salin Teks</span>
+            </button>
+
+            <a
+              id="modal-wa-share"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium text-white theme-bg-accent rounded-lg transition-colors whitespace-nowrap"
+            >
+              <span>WhatsApp</span>
+            </a>
+
+            <button
+              id="modal-article-close"
+              type="button"
+              class="p-2 text-gray-500 hover:text-[#1F2937] hover:bg-stone-100 rounded-lg transition-colors"
+              aria-label="Tutup jendela baca"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <article id="modal-article-scroll" class="px-6 sm:px-10 py-8 overflow-y-auto">
+          <div id="modal-article-meta" class="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-3"></div>
+          <h2 id="modal-article-title" class="font-theme-display text-2xl sm:text-3xl font-medium leading-snug text-[#1F2937] headline-balance mb-6 pb-6 border-b border-stone-200"></h2>
+          <div id="modal-article-body" class="font-prose text-[#1F2937] space-y-5 leading-[1.82] text-[17px]"></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- =======================================================================
+         LIGHTBOX GAMBAR FLYER NASIHAT (TAB 3)
+         ======================================================================= -->
+    <div
+      id="lightbox-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lightbox-title"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-950/92 backdrop-blur-sm"
+    >
+      <div class="relative w-full max-w-3xl max-h-[92vh] flex flex-col items-center">
+        <div class="w-full flex items-center justify-between gap-4 mb-4 text-white">
+          <div class="min-w-0">
+            <h3 id="lightbox-title" class="font-theme-display text-lg sm:text-xl font-medium truncate"></h3>
+            <p id="lightbox-meta" class="text-xs text-gray-300 mt-0.5"></p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              id="lightbox-download"
+              type="button"
+              class="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium theme-bg-accent text-white rounded-xl transition-colors whitespace-nowrap"
+            >
+              <span>Simpan Gambar</span>
+            </button>
+            <button
+              id="lightbox-close"
+              type="button"
+              class="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+              aria-label="Tutup pratinjau gambar"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="w-full overflow-hidden rounded-2xl bg-stone-900 border border-white/10 flex items-center justify-center max-h-[72vh] shadow-2xl">
+          <img id="lightbox-img" src="" alt="" referrerpolicy="no-referrer" class="max-h-[72vh] w-auto object-contain" />
+        </div>
+
+        <p id="lightbox-caption" class="mt-4 text-sm text-gray-200 text-center max-w-xl leading-relaxed"></p>
+      </div>
+    </div>
+
+    <!-- =======================================================================
+         SCRIPT DATA, ENGINE PUBLIK, & STUDIO VISUAL BUILDER
+         ======================================================================= -->
+    <script src="/data.js"></script>
+    <script src="/app.js"></script>
+    <script src="/studio.js"></script>
+  </body>
+</html>
