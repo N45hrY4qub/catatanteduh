@@ -34,6 +34,7 @@
     sidebarHidden: false,
     hasUnsavedChanges: false,
     pendingConfirmAction: null,
+    lastTextControl: null,
     pendingUploads: [], // { repoPath, base64Content, name }
     draftData: null,
     github: loadGitHubConfig(),
@@ -289,6 +290,9 @@ window.SITE_DATA = ${serialized};
   // Render Sidebar Studio Kiri (4 Sub-Tab Ala Elementor)
   // --------------------------------------------------------------------------
   function renderStudioSidebar() {
+    App.syncDynamicFonts(studio.draftData);
+    studio.lastTextControl = null;
+
     els.studioNavTabs.forEach((btn) => {
       const active = btn.dataset.studioTab === studio.studioTab;
       btn.classList.toggle("border-emerald-700", active);
@@ -307,6 +311,75 @@ window.SITE_DATA = ${serialized};
     } else {
       els.studioPanelBody.innerHTML = renderTabPengaturan();
     }
+  }
+
+  function buildFontSelectOptionsHtml() {
+    const fonts = App.getFontCollection(studio.draftData);
+    const r2Fonts = fonts.filter((f) => f.sumber === "r2");
+    const googleArab = fonts.filter((f) => f.sumber === "google" && f.kategori === "arab");
+    const googleLatin = fonts.filter((f) => f.sumber === "google" && f.kategori !== "arab");
+
+    const opt = (f) => `<option value="${App.escapeHtml(f.id)}">${App.escapeHtml(f.nama)}</option>`;
+    return `
+      ${r2Fonts.length ? `<optgroup label="Font Upload R2">${r2Fonts.map(opt).join("")}</optgroup>` : ""}
+      ${googleArab.length ? `<optgroup label="Google Fonts — Arab / Qur'an / Hadis">${googleArab.map(opt).join("")}</optgroup>` : ""}
+      ${googleLatin.length ? `<optgroup label="Google Fonts — Latin / Umum">${googleLatin.map(opt).join("")}</optgroup>` : ""}
+    `;
+  }
+
+  function renderRichTextFontToolbar(hint) {
+    return `
+      <div class="sticky top-0 z-10 p-3 rounded-xl border border-emerald-200/90 bg-emerald-50/90 backdrop-blur-xs space-y-2 shadow-xs">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[11px] font-semibold text-emerald-950">Pilih Font untuk Teks Tertentu</span>
+          <span id="studio-font-active-field" class="text-[10px] font-medium text-emerald-800 truncate">${App.escapeHtml(
+            hint || "Sorot teks di salah satu kolom"
+          )}</span>
+        </div>
+        <select id="studio-text-font-select" class="w-full px-2.5 py-1.5 text-xs bg-white border border-emerald-200 rounded-lg focus:outline-none focus:border-emerald-700">
+          ${buildFontSelectOptionsHtml()}
+        </select>
+        <div class="flex flex-wrap gap-1.5 text-[11px]">
+          <button
+            type="button"
+            id="btn-apply-selection-font"
+            class="flex-1 py-1.5 px-2.5 font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors whitespace-nowrap"
+            title="Terapkan font ke teks yang sedang Anda blok/sorot"
+          >
+            Terapkan ke Teks Terpilih
+          </button>
+          <button
+            type="button"
+            id="btn-apply-field-font"
+            class="py-1.5 px-2.5 font-medium text-emerald-900 bg-white hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors whitespace-nowrap"
+            title="Terapkan font ke seluruh isi kolom yang sedang dipilih"
+          >
+            Semua Kolom
+          </button>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+          <button
+            type="button"
+            id="btn-apply-arab-block"
+            class="py-1 px-2 font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors"
+            title="Bungkus sebagai blok kutipan Arab rata kanan dengan latar lembut"
+          >
+            + Blok Arab Rata Kanan
+          </button>
+          <button
+            type="button"
+            id="btn-clear-text-font"
+            class="ml-auto py-1 px-2 font-medium text-gray-600 bg-white hover:bg-stone-100 border border-stone-200 rounded-md transition-colors"
+            title="Hapus pilihan font khusus pada teks terpilih atau kolom aktif"
+          >
+            Hapus Font
+          </button>
+        </div>
+        <p class="text-[10px] text-emerald-900/80 leading-snug">
+          Teks Arab berdiri sendiri otomatis rata kanan; teks Arab yang terapit teks Latin tetap rata kiri secara rapi.
+        </p>
+      </div>
+    `;
   }
 
   function renderTabTampilan() {
@@ -414,6 +487,69 @@ window.SITE_DATA = ${serialized};
           </div>
         </div>
 
+        <!-- Koleksi Font Pilihan (Cloudflare R2 & Google Fonts) -->
+        <div class="pt-4 border-t border-stone-200 space-y-3">
+          <div>
+            <p class="text-xs font-semibold text-gray-700">Koleksi Font Pilihan Teks (R2 &amp; Google Fonts)</p>
+            <p class="text-[11px] text-gray-500 leading-relaxed mt-0.5">
+              Font di bawah bukan default paksa, melainkan daftar pilihan yang dapat Anda terapkan pada kata, ayat, atau paragraf tertentu saat menulis konten.
+            </p>
+          </div>
+
+          <div class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            ${App.getFontCollection(studio.draftData)
+              .map(
+                (f) => `
+              <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-stone-200 bg-white">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
+                      f.sumber === "r2"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-indigo-50 text-indigo-800"
+                    }">${f.sumber === "r2" ? "R2" : "Google"}</span>
+                    <span class="text-[11px] font-semibold text-gray-800 truncate">${App.escapeHtml(f.nama)}</span>
+                  </div>
+                  <p class="text-xs text-gray-600 mt-1 truncate" dir="${f.kategori === "arab" ? "rtl" : "ltr"}" style="font-family: '${App.escapeHtml(
+                    f.family
+                  )}', serif;">
+                    ${f.kategori === "arab" ? "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ" : "Catatan Teduh — Ruang Berbagi Ilmu"}
+                  </p>
+                </div>
+                ${
+                  !f.builtin
+                    ? `<button type="button" data-remove-custom-font="${App.escapeHtml(
+                        f.id
+                      )}" class="px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-red-50 rounded-md shrink-0">Hapus</button>`
+                    : `<span class="text-[10px] text-gray-400 shrink-0">Bawaan</span>`
+                }
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+
+          <div class="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
+            <p class="text-[11px] font-semibold text-gray-700">+ Tambah Font Baru (R2 / Google Fonts)</p>
+            <div class="grid grid-cols-2 gap-2">
+              <select id="cfg-new-font-source" class="px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg">
+                <option value="r2">Cloudflare R2 (font/)</option>
+                <option value="google">Google Fonts</option>
+              </select>
+              <select id="cfg-new-font-cat" class="px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg">
+                <option value="arab">Font Arab / Qur'an</option>
+                <option value="latin">Font Latin / Umum</option>
+              </select>
+            </div>
+            <input type="text" id="cfg-new-font-name" placeholder="Nama label font (mis. LPMQ Isep Misbah / Cairo)" class="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg" />
+            <input type="text" id="cfg-new-font-value" placeholder="Nama file R2 (mis. lpmq.woff2) atau nama Google Font" class="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg" />
+            <button type="button" id="btn-add-custom-font" class="w-full py-2 px-3 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors">
+              Tambahkan ke Koleksi Font
+            </button>
+            <p id="cfg-font-status" class="text-[11px] text-gray-500"></p>
+          </div>
+        </div>
+
         <!-- Elemen Beranda -->
         <div class="pt-4 border-t border-stone-200 space-y-3">
           <p class="text-xs font-semibold text-gray-700">Elemen di Halaman Beranda</p>
@@ -489,31 +625,33 @@ window.SITE_DATA = ${serialized};
           Setiap teks yang Anda ketik di sini akan langsung terlihat pada Live Preview di sebelah kanan.
         </p>
 
+        ${renderRichTextFontToolbar("Sorot teks beranda untuk ganti font")}
+
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Website (Logo Teks)</label>
-          <input type="text" data-profil-field="namaWebsite" value="${App.escapeHtml(p.namaWebsite)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          <input type="text" data-profil-field="namaWebsite" data-field-label="Nama Website" value="${App.escapeHtml(p.namaWebsite)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Label Kecil Atas (Kicker)</label>
-          <input type="text" data-profil-field="kicker" value="${App.escapeHtml(p.kicker)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          <input type="text" data-profil-field="kicker" data-field-label="Label Kecil Atas" value="${App.escapeHtml(p.kicker)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Utama Beranda</label>
-          <textarea rows="2" data-profil-field="judulUtama" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
+          <textarea rows="2" dir="auto" data-profil-field="judulUtama" data-field-label="Judul Utama" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
             p.judulUtama
           )}</textarea>
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Subjudul / Tagline di Bawah Judul</label>
-          <input type="text" data-profil-field="subjudul" value="${App.escapeHtml(p.subjudul || "— ruang berbagi ilmu & nasihat kehidupan —")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          <input type="text" dir="auto" data-profil-field="subjudul" data-field-label="Subjudul" value="${App.escapeHtml(p.subjudul || "— ruang berbagi ilmu & nasihat kehidupan —")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Deskripsi Tujuan Berbagi Ilmu</label>
-          <textarea rows="4" data-profil-field="deskripsi" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
+          <textarea rows="4" dir="auto" data-profil-field="deskripsi" data-field-label="Deskripsi Beranda" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
             p.deskripsi
           )}</textarea>
         </div>
@@ -750,7 +888,7 @@ window.SITE_DATA = ${serialized};
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Artikel</label>
-          <input name="judul" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          <input name="judul" dir="auto" data-field-label="Judul Artikel" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -768,18 +906,18 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Singkat</label>
-          <textarea name="ringkasan" rows="2" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan" rows="2" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Isi Artikel Lengkap (pisahkan paragraf dengan Enter 2x)</label>
-          <textarea name="isi" rows="7" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm leading-relaxed">${App.escapeHtml(isiText)}</textarea>
+          <textarea name="isi" dir="auto" data-field-label="Isi Artikel" rows="7" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm leading-relaxed">${App.escapeHtml(isiText)}</textarea>
         </div>
       `;
     } else if (type === "ebook") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Ebook</label>
-          <input name="judul" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          <input name="judul" dir="auto" data-field-label="Judul Ebook" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -813,14 +951,14 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Deskripsi Singkat</label>
-          <textarea name="deskripsi" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.deskripsi || "")}</textarea>
+          <textarea name="deskripsi" dir="auto" data-field-label="Deskripsi Ebook" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.deskripsi || "")}</textarea>
         </div>
       `;
     } else if (type === "flyer") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Flyer Nasihat</label>
-          <input name="judul" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          <input name="judul" dir="auto" data-field-label="Judul Flyer" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -839,14 +977,14 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Kutipan / Teks Nasihat</label>
-          <textarea name="nasihat" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.nasihat || "")}</textarea>
+          <textarea name="nasihat" dir="auto" data-field-label="Teks Nasihat" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.nasihat || "")}</textarea>
         </div>
       `;
     } else if (type === "audio") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Audio Kajian / Siniar</label>
-          <input name="judul" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          <input name="judul" dir="auto" data-field-label="Judul Audio" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -869,14 +1007,14 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Materi</label>
-          <textarea name="ringkasan" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan Audio" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
         </div>
       `;
     } else if (type === "video") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Video</label>
-          <input name="judul" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          <input name="judul" dir="auto" data-field-label="Judul Video" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Link YouTube atau ID Video (11 karakter)</label>
@@ -898,7 +1036,7 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Materi</label>
-          <textarea name="ringkasan" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan Video" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
         </div>
       `;
     }
@@ -913,6 +1051,8 @@ window.SITE_DATA = ${serialized};
             &larr; Kembali
           </button>
         </div>
+
+        ${renderRichTextFontToolbar("Klik / sorot teks di kolom lalu pilih font")}
 
         ${fieldsHtml}
 
@@ -1606,7 +1746,207 @@ window.SITE_DATA = ${serialized};
       }
     });
 
+    // Lacak kolom & teks yang sedang diblok/dipilih untuk Toolbar Font Teks
+    function trackActiveTextSelection(target) {
+      if (!target || !["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (target.tagName === "INPUT" && target.type && !["text", "search", ""].includes(target.type)) return;
+      if (target.id && target.id.startsWith("cfg-")) return;
+      studio.lastTextControl = {
+        el: target,
+        start: typeof target.selectionStart === "number" ? target.selectionStart : 0,
+        end: typeof target.selectionEnd === "number" ? target.selectionEnd : 0,
+      };
+      const badge = document.getElementById("studio-font-active-field");
+      if (badge) {
+        const lbl = target.dataset.fieldLabel || target.name || "Kolom teks";
+        const selLen = Math.abs((studio.lastTextControl.end || 0) - (studio.lastTextControl.start || 0));
+        badge.textContent = selLen > 0 ? `${lbl} (${selLen} huruf dipilih)` : `Kolom: ${lbl}`;
+      }
+    }
+
+    ["focusin", "keyup", "mouseup", "select"].forEach((evtName) => {
+      els.studioPanelBody.addEventListener(evtName, (e) => trackActiveTextSelection(e.target));
+    });
+
+    function getTrackedTextTarget() {
+      if (studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)) {
+        return studio.lastTextControl;
+      }
+      const fallback = els.studioPanelBody.querySelector("textarea[data-field-label], input[data-field-label]");
+      if (!fallback) return null;
+      return {
+        el: fallback,
+        start: fallback.selectionStart || 0,
+        end: fallback.selectionEnd || 0,
+      };
+    }
+
+    function applyTagToTrackedTarget(mode) {
+      const targetInfo = getTrackedTextTarget();
+      const fontSelect = document.getElementById("studio-text-font-select");
+      if (!targetInfo || !fontSelect) return;
+
+      const el = targetInfo.el;
+      const fontId = fontSelect.value;
+      const val = String(el.value || "");
+      let start = Math.min(targetInfo.start, val.length);
+      let end = Math.min(targetInfo.end, val.length);
+      if (end < start) [start, end] = [end, start];
+
+      if (mode === "clear") {
+        if (end > start) {
+          const cleaned = App.stripRichTags(val.slice(start, end));
+          el.value = val.slice(0, start) + cleaned + val.slice(end);
+          el.focus();
+          el.setSelectionRange(start, start + cleaned.length);
+        } else {
+          const cleaned = App.stripRichTags(val);
+          el.value = cleaned;
+          el.focus();
+        }
+      } else if (mode === "field") {
+        const cleanVal = val.replace(/^\[(font|arab)=[a-z0-9-]+\]([\s\S]*)\[\/\1\]$/i, "$2");
+        el.value = `[font=${fontId}]${cleanVal}[/font]`;
+        el.focus();
+      } else if (mode === "arab-block") {
+        const tagOpen = `[arab=${fontId}]`;
+        const tagClose = "[/arab]";
+        if (end > start) {
+          const inner = App.stripRichTags(val.slice(start, end));
+          const wrapped = `${tagOpen}${inner}${tagClose}`;
+          el.value = val.slice(0, start) + wrapped + val.slice(end);
+          el.focus();
+          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + inner.length);
+        } else {
+          const sample = val.trim() ? "" : "اكتب النص العربي هنا";
+          if (!val.trim()) {
+            el.value = `${tagOpen}${sample}${tagClose}`;
+            el.focus();
+            el.setSelectionRange(tagOpen.length, tagOpen.length + sample.length);
+          } else {
+            const inner = App.stripRichTags(val);
+            el.value = `${tagOpen}${inner}${tagClose}`;
+            el.focus();
+          }
+        }
+      } else {
+        const tagOpen = `[font=${fontId}]`;
+        const tagClose = "[/font]";
+        if (end > start) {
+          const selectedText = val.slice(start, end).replace(/^\[font=[a-z0-9-]+\]([\s\S]*)\[\/font\]$/i, "$1");
+          const wrapped = `${tagOpen}${selectedText}${tagClose}`;
+          el.value = val.slice(0, start) + wrapped + val.slice(end);
+          el.focus();
+          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + selectedText.length);
+        } else {
+          const placeholder = "Teks di sini";
+          const wrapped = `${tagOpen}${placeholder}${tagClose}`;
+          el.value = val.slice(0, start) + wrapped + val.slice(start);
+          el.focus();
+          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + placeholder.length);
+        }
+      }
+
+      studio.lastTextControl = {
+        el,
+        start: el.selectionStart || 0,
+        end: el.selectionEnd || 0,
+      };
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
     els.studioPanelBody.addEventListener("click", async (e) => {
+      // Toolbar Font Per-Teks
+      if (e.target.closest("#btn-apply-selection-font")) {
+        applyTagToTrackedTarget("selection");
+        return;
+      }
+      if (e.target.closest("#btn-apply-field-font")) {
+        applyTagToTrackedTarget("field");
+        return;
+      }
+      if (e.target.closest("#btn-apply-arab-block")) {
+        applyTagToTrackedTarget("arab-block");
+        return;
+      }
+      if (e.target.closest("#btn-clear-text-font")) {
+        applyTagToTrackedTarget("clear");
+        return;
+      }
+
+      // Tambah / Hapus Koleksi Font Kustom (R2 / Google Fonts)
+      if (e.target.closest("#btn-add-custom-font")) {
+        const sumberEl = document.getElementById("cfg-new-font-source");
+        const catEl = document.getElementById("cfg-new-font-cat");
+        const nameEl = document.getElementById("cfg-new-font-name");
+        const valEl = document.getElementById("cfg-new-font-value");
+        const statusEl = document.getElementById("cfg-font-status");
+
+        const sumber = sumberEl ? sumberEl.value : "r2";
+        const kategori = catEl ? catEl.value : "arab";
+        const rawVal = valEl ? valEl.value.trim() : "";
+        const nama = (nameEl ? nameEl.value.trim() : "") || rawVal;
+
+        if (!rawVal) {
+          if (statusEl) {
+            statusEl.className = "text-[11px] text-red-700";
+            statusEl.textContent = "Isi nama file font R2 atau nama Google Font terlebih dahulu.";
+          }
+          return;
+        }
+
+        const slug = nama
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || `font-${Date.now()}`;
+        const id = `${slug}-${Date.now().toString(36).slice(-4)}`;
+        const newEntry =
+          sumber === "r2"
+            ? {
+                id,
+                nama: `${nama} (R2)`,
+                sumber: "r2",
+                family: `CTCustom_${id.replace(/[^a-z0-9]/gi, "_")}`,
+                url: App.resolveR2FontUrl(rawVal),
+                kategori,
+                builtin: false,
+              }
+            : {
+                id,
+                nama: `${nama} (Google)`,
+                sumber: "google",
+                family: rawVal,
+                kategori,
+                builtin: false,
+              };
+
+        const currentList = App.getFontCollection(studio.draftData);
+        studio.draftData.tampilan.koleksiFont = [...currentList, newEntry];
+        App.syncDynamicFonts(studio.draftData);
+        saveDraftToLocal();
+        renderStudioSidebar();
+        renderLivePreview();
+
+        const refreshed = document.getElementById("cfg-font-status");
+        if (refreshed) {
+          refreshed.className = "text-[11px] text-emerald-700 font-medium";
+          refreshed.textContent = `Font "${newEntry.nama}" berhasil ditambahkan ke daftar pilihan.`;
+        }
+        return;
+      }
+
+      const removeFontBtn = e.target.closest("[data-remove-custom-font]");
+      if (removeFontBtn) {
+        const id = removeFontBtn.dataset.removeCustomFont;
+        const currentList = App.getFontCollection(studio.draftData);
+        studio.draftData.tampilan.koleksiFont = currentList.filter((f) => f.id !== id || f.builtin);
+        App.syncDynamicFonts(studio.draftData);
+        saveDraftToLocal();
+        renderStudioSidebar();
+        renderLivePreview();
+        return;
+      }
+
       // Pengaturan Warna, Font, Gaya Kartu
       const warnaBtn = e.target.closest("[data-style-warna]");
       if (warnaBtn) {

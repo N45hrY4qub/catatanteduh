@@ -69,6 +69,92 @@
     },
   };
 
+  const R2_FONT_BASE_URL = "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/font/";
+
+  const BUILTIN_FONT_COLLECTION = [
+    {
+      id: "uthmanic-hafs",
+      nama: "Uthmanic Hafs v22 (Al-Qur'an R2)",
+      sumber: "r2",
+      family: "UthmanicHafsR2",
+      url: "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/font/uthmanic_hafs_v22.woff2",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "amiri-quran",
+      nama: "Amiri Quran (Al-Qur'an Google)",
+      sumber: "google",
+      family: "Amiri Quran",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "amiri",
+      nama: "Amiri (Hadis & Kitab Google)",
+      sumber: "google",
+      family: "Amiri",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "scheherazade-new",
+      nama: "Scheherazade New (Arab Klasik Google)",
+      sumber: "google",
+      family: "Scheherazade New",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "noto-naskh-arabic",
+      nama: "Noto Naskh Arabic (Arab Umum Google)",
+      sumber: "google",
+      family: "Noto Naskh Arabic",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "readex-pro",
+      nama: "Readex Pro (Arab Modern Google)",
+      sumber: "google",
+      family: "Readex Pro",
+      kategori: "arab",
+      builtin: true,
+    },
+    {
+      id: "fraunces",
+      nama: "Fraunces (Editorial Google)",
+      sumber: "google",
+      family: "Fraunces",
+      kategori: "latin",
+      builtin: true,
+    },
+    {
+      id: "plus-jakarta-sans",
+      nama: "Plus Jakarta Sans (Modern Google)",
+      sumber: "google",
+      family: "Plus Jakarta Sans",
+      kategori: "latin",
+      builtin: true,
+    },
+    {
+      id: "source-serif-4",
+      nama: "Source Serif 4 (Klasik Buku Google)",
+      sumber: "google",
+      family: "Source Serif 4",
+      kategori: "latin",
+      builtin: true,
+    },
+    {
+      id: "lora",
+      nama: "Lora (Sastra Google)",
+      sumber: "google",
+      family: "Lora",
+      kategori: "latin",
+      builtin: true,
+    },
+  ];
+
   const TAB_META = {
     tulisan: { label: "Tulisan", navLabel: "Tulisan", hasCount: true },
     ebook: { label: "Ebook", navLabel: "Ebook", hasCount: true },
@@ -89,8 +175,13 @@
   };
 
   // --------------------------------------------------------------------------
-  // Utilitas Aman
+  // Utilitas Aman, Font R2/Google, & Pemformatan Arab Bidi (RTL/LTR Otomatis)
   // --------------------------------------------------------------------------
+  const ARABIC_CHAR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  const ARABIC_CHAR_GLOBAL_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
+  const ARABIC_RUN_RE = /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF][\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\s\u064B-\u065F\u0670\u06D6-\u06ED\u0610-\u061A،؛؟۔۝۞]*)/g;
+  const LATIN_CHAR_GLOBAL_RE = /[A-Za-z\u00C0-\u024F]/g;
+
   function escapeHtml(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -98,6 +189,210 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function resolveR2FontUrl(rawUrl) {
+    const val = String(rawUrl || "").trim();
+    if (!val) return "";
+    if (/^(https?:\/\/|\/|data:)/i.test(val)) return val;
+    return `${R2_FONT_BASE_URL}${val.replace(/^\/+/, "")}`;
+  }
+
+  function inferFontFormat(url) {
+    const clean = String(url || "").split("?")[0].toLowerCase();
+    if (clean.endsWith(".woff2")) return "woff2";
+    if (clean.endsWith(".woff")) return "woff";
+    if (clean.endsWith(".otf")) return "opentype";
+    if (clean.endsWith(".ttf")) return "truetype";
+    return "woff2";
+  }
+
+  function getFontCollection(siteData) {
+    const custom =
+      siteData && siteData.tampilan && Array.isArray(siteData.tampilan.koleksiFont)
+        ? siteData.tampilan.koleksiFont
+        : [];
+    const byId = new Map();
+    BUILTIN_FONT_COLLECTION.forEach((f) => byId.set(f.id, deepClone(f)));
+    custom.forEach((f) => {
+      if (f && f.id && f.family) {
+        byId.set(f.id, {
+          ...f,
+          url: f.sumber === "r2" ? resolveR2FontUrl(f.url) : f.url || "",
+        });
+      }
+    });
+    return Array.from(byId.values());
+  }
+
+  function syncDynamicFonts(siteData) {
+    const fonts = getFontCollection(siteData);
+
+    // 1. Injeksi @font-face untuk font dari Cloudflare R2
+    const r2Fonts = fonts.filter((f) => f.sumber === "r2" && f.url);
+    const r2Css = r2Fonts
+      .map((f) => {
+        const safeFam = String(f.family || f.id).replace(/["\\]/g, "");
+        const safeUrl = resolveR2FontUrl(f.url).replace(/["\\]/g, "");
+        const fmt = inferFontFormat(safeUrl);
+        return `@font-face { font-family: "${safeFam}"; src: url("${safeUrl}") format("${fmt}"); font-display: swap; font-weight: normal; font-style: normal; }`;
+      })
+      .join("\n");
+
+    let r2StyleEl = document.getElementById("catatanteduh-r2-fonts");
+    if (!r2StyleEl) {
+      r2StyleEl = document.createElement("style");
+      r2StyleEl.id = "catatanteduh-r2-fonts";
+      document.head.appendChild(r2StyleEl);
+    }
+    if (r2StyleEl.textContent !== r2Css) {
+      r2StyleEl.textContent = r2Css;
+    }
+
+    // 2. Muat Google Fonts tambahan untuk koleksi pilihan teks
+    const alreadyInIndex = new Set(["Fraunces", "Plus Jakarta Sans", "Source Serif 4"]);
+    const weightsMap = {
+      "Amiri Quran": "Amiri+Quran",
+      Amiri: "Amiri:ital,wght@0,400;0,700;1,400",
+      "Scheherazade New": "Scheherazade+New:wght@400;700",
+      "Noto Naskh Arabic": "Noto+Naskh+Arabic:wght@400;500;600;700",
+      "Readex Pro": "Readex+Pro:wght@400;500;600",
+      Lora: "Lora:ital,wght@0,400;0,600;1,400",
+    };
+
+    const googleFamilies = [];
+    const seenFam = new Set();
+    fonts.forEach((f) => {
+      if (f.sumber !== "google" || !f.family) return;
+      const fam = String(f.family).trim();
+      if (alreadyInIndex.has(fam) || seenFam.has(fam)) return;
+      seenFam.add(fam);
+      googleFamilies.push(weightsMap[fam] || `${encodeURIComponent(fam).replace(/%20/g, "+")}:wght@400;600;700`);
+    });
+
+    let googleLinkEl = document.getElementById("catatanteduh-google-fonts");
+    if (googleFamilies.length) {
+      const href = `https://fonts.googleapis.com/css2?${googleFamilies
+        .map((f) => `family=${f}`)
+        .join("&")}&display=swap`;
+      if (!googleLinkEl) {
+        googleLinkEl = document.createElement("link");
+        googleLinkEl.id = "catatanteduh-google-fonts";
+        googleLinkEl.rel = "stylesheet";
+        document.head.appendChild(googleLinkEl);
+      }
+      if (googleLinkEl.getAttribute("href") !== href) {
+        googleLinkEl.setAttribute("href", href);
+      }
+    }
+  }
+
+  function stripRichTags(str) {
+    return String(str || "")
+      .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?\]/gi, "")
+      .replace(/\[\/(?:font|arab)\]/gi, "");
+  }
+
+  function detectTextDirection(rawText) {
+    const trimmed = String(rawText || "").trim();
+    if (!trimmed) return "ltr";
+    if (/^\[arab(?:=[a-z0-9-]+)?\][\s\S]*\[\/arab\]$/i.test(trimmed)) return "rtl";
+
+    const plain = stripRichTags(trimmed);
+    const arabicMatches = plain.match(ARABIC_CHAR_GLOBAL_RE) || [];
+    const latinMatches = plain.match(LATIN_CHAR_GLOBAL_RE) || [];
+    if (!arabicMatches.length) return "ltr";
+    if (!latinMatches.length) return "rtl";
+
+    // Cek huruf kuat pertama (abaikan angka, spasi, tanda kutip, tanda baca)
+    for (let i = 0; i < plain.length; i++) {
+      const ch = plain[i];
+      if (ARABIC_CHAR_RE.test(ch)) {
+        // Rata kanan hanya jika diawali Arab dan mayoritas/seimbang Arab (bukan Arab singkat lalu kalimat Latin panjang)
+        return arabicMatches.length >= latinMatches.length ? "rtl" : "ltr";
+      }
+      if (/[A-Za-z\u00C0-\u024F]/.test(ch)) {
+        // Jika diawali Latin (termasuk Arab yang terapit teks Latin), tetap rata kiri (LTR)
+        return "ltr";
+      }
+    }
+    return arabicMatches.length >= latinMatches.length ? "rtl" : "ltr";
+  }
+
+  function wrapArabicRunsInEscaped(escapedText) {
+    return escapedText.replace(
+      ARABIC_RUN_RE,
+      (match) => `<span lang="ar" dir="auto" class="bidi-isolate">${match}</span>`
+    );
+  }
+
+  function formatRichInlineHtml(rawText, siteData) {
+    const input = String(rawText || "");
+    if (!input) return "";
+
+    const fonts = getFontCollection(siteData || state.currentData || window.SITE_DATA || {});
+    const fontMap = new Map(fonts.map((f) => [f.id, f]));
+    const tagRegex = /\[(font|arab)(?:=([a-z0-9-]+))?\]([\s\S]*?)\[\/\1\]/gi;
+
+    let result = "";
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tagRegex.exec(input)) !== null) {
+      if (match.index > lastIndex) {
+        const plainPart = input.slice(lastIndex, match.index);
+        result += wrapArabicRunsInEscaped(escapeHtml(plainPart));
+      }
+
+      const tagType = match[1].toLowerCase();
+      const fontId = (match[2] || "").toLowerCase();
+      const innerRaw = match[3] || "";
+      const fontObj = fontId ? fontMap.get(fontId) : null;
+      const plainInner = stripRichTags(innerRaw);
+      const hasArabic = ARABIC_CHAR_RE.test(plainInner);
+
+      const safeFam = fontObj ? String(fontObj.family).replace(/["\\']/g, "") : "";
+      const fallback = fontObj && fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      const fontStyle = safeFam ? `font-family: '${safeFam}', ${fallback};` : "";
+
+      if (tagType === "arab") {
+        const innerHtml = formatRichInlineHtml(innerRaw, siteData);
+        result += `<span lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}"${
+          fontStyle ? ` style="${fontStyle}"` : ""
+        }>${innerHtml}</span>`;
+      } else {
+        const innerHtml = wrapArabicRunsInEscaped(escapeHtml(innerRaw));
+        if (fontObj) {
+          result += `<span${hasArabic ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
+            hasArabic ? " ct-font-arab" : ""
+          }" style="${fontStyle}">${innerHtml}</span>`;
+        } else {
+          result += innerHtml;
+        }
+      }
+
+      lastIndex = tagRegex.lastIndex;
+    }
+
+    if (lastIndex < input.length) {
+      result += wrapArabicRunsInEscaped(escapeHtml(input.slice(lastIndex)));
+    }
+
+    return result;
+  }
+
+  function formatRichLinesHtml(rawText, siteData) {
+    const lines = String(rawText || "").split(/\n+/);
+    if (lines.length <= 1) {
+      return formatRichInlineHtml(rawText, siteData);
+    }
+    return lines
+      .map((line) => {
+        const dir = detectTextDirection(line);
+        const cls = dir === "rtl" ? "block text-right leading-[2.05]" : "block";
+        return `<span dir="${dir}" class="${cls}">${formatRichInlineHtml(line, siteData)}</span>`;
+      })
+      .join("");
   }
 
   function formatIndex(idx) {
@@ -124,13 +419,13 @@
       if (!query || !query.trim()) return true;
       const q = query.toLowerCase().trim();
       const haystack = [
-        item.judul,
+        stripRichTags(item.judul),
         item.kategori,
         item.tema,
         item.seri,
-        item.ringkasan,
-        item.deskripsi,
-        item.nasihat,
+        stripRichTags(item.ringkasan),
+        stripRichTags(item.deskripsi),
+        stripRichTags(item.nasihat),
         item.penulis,
       ]
         .filter(Boolean)
@@ -179,7 +474,7 @@
   // --------------------------------------------------------------------------
   // Penerapan Variabel Tema CSS (Instan & Zero-Flicker)
   // --------------------------------------------------------------------------
-  function applyThemeVariables(tampilan) {
+  function applyThemeVariables(tampilan, siteData) {
     const t = tampilan || {};
     const palette = THEME_PALETTES[t.warnaAksen] || THEME_PALETTES.emerald;
     const fonts = FONT_PRESETS[t.jenisFont] || FONT_PRESETS.editorial;
@@ -196,6 +491,7 @@
     root.style.setProperty("--font-body", fonts.body);
 
     document.body.setAttribute("data-card-style", cardStyle);
+    syncDynamicFonts(siteData || { tampilan: t });
   }
 
   // --------------------------------------------------------------------------
@@ -249,11 +545,15 @@
               <span class="font-theme-display text-sm text-stone-400 tabular-nums shrink-0">${formatIndex(idx)}</span>
             </div>
 
-            <h2 class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] headline-balance mb-3">
-              ${escapeHtml(item.judul)}
+            <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] headline-balance mb-3 ${
+              detectTextDirection(item.judul) === "rtl" ? "text-right" : ""
+            }">
+              ${formatRichInlineHtml(item.judul, siteData)}
             </h2>
-            <p class="text-sm sm:text-[15px] text-gray-600 leading-relaxed mb-7">
-              ${escapeHtml(item.ringkasan)}
+            <p dir="${detectTextDirection(item.ringkasan)}" class="text-sm sm:text-[15px] text-gray-600 leading-relaxed mb-7 ${
+              detectTextDirection(item.ringkasan) === "rtl" ? "text-right" : ""
+            }">
+              ${formatRichLinesHtml(item.ringkasan, siteData)}
             </p>
           </div>
 
@@ -291,7 +591,7 @@
             <div class="aspect-[3/4] rounded-xl overflow-hidden bg-stone-100 border border-stone-200/80 shadow-book relative">
               <img
                 src="${escapeHtml(item.sampul)}"
-                alt="Sampul ebook ${escapeHtml(item.judul)}"
+                alt="Sampul ebook ${escapeHtml(stripRichTags(item.judul))}"
                 referrerpolicy="no-referrer"
                 loading="lazy"
                 class="w-full h-full object-cover"
@@ -299,7 +599,7 @@
               />
               <div class="hidden absolute inset-0 theme-bg-soft p-4 flex flex-col justify-between theme-text-accent">
                 <span class="text-[11px] font-medium">Ebook PDF</span>
-                <span class="font-theme-display text-sm font-medium leading-snug">${escapeHtml(item.judul)}</span>
+                <span class="font-theme-display text-sm font-medium leading-snug">${formatRichInlineHtml(item.judul, siteData)}</span>
               </div>
             </div>
           </div>
@@ -312,11 +612,15 @@
                 </p>
                 ${buildDraftBadge(item)}
               </div>
-              <h2 class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] mb-3">
-                ${escapeHtml(item.judul)}
+              <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] mb-3 ${
+                detectTextDirection(item.judul) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichInlineHtml(item.judul, siteData)}
               </h2>
-              <p class="text-sm text-gray-600 leading-relaxed mb-5">
-                ${escapeHtml(item.deskripsi)}
+              <p dir="${detectTextDirection(item.deskripsi)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
+                detectTextDirection(item.deskripsi) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichLinesHtml(item.deskripsi, siteData)}
               </p>
             </div>
 
@@ -369,18 +673,18 @@
             type="button"
             data-open-flyer="${escapeHtml(item.id)}"
             class="group relative aspect-[3/4] w-full bg-[#F3F1EC] rounded-xl overflow-hidden text-left"
-            aria-label="Perbesar flyer ${escapeHtml(item.judul)}"
+            aria-label="Perbesar flyer ${escapeHtml(stripRichTags(item.judul))}"
           >
             <img
               src="${escapeHtml(item.gambar)}"
-              alt="${escapeHtml(item.judul)}"
+              alt="${escapeHtml(stripRichTags(item.judul))}"
               referrerpolicy="no-referrer"
               loading="lazy"
               class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
             />
             <div class="hidden absolute inset-0 theme-bg-soft p-6 flex flex-col justify-center items-center text-center theme-text-accent">
-              <span class="font-theme-display text-lg font-medium">${escapeHtml(item.judul)}</span>
+              <span class="font-theme-display text-lg font-medium">${formatRichInlineHtml(item.judul, siteData)}</span>
             </div>
             <span class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900/80 text-white rounded-lg backdrop-blur-sm transition-colors">
               <span>Perbesar</span>
@@ -395,11 +699,15 @@
                 <span>${escapeHtml(item.tanggal)}</span>
                 ${buildDraftBadge(item)}
               </div>
-              <h2 class="font-theme-display text-xl font-medium text-[#1F2937] mb-2">
-                ${escapeHtml(item.judul)}
+              <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl font-medium text-[#1F2937] mb-2 ${
+                detectTextDirection(item.judul) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichInlineHtml(item.judul, siteData)}
               </h2>
-              <p class="text-sm text-gray-600 leading-relaxed mb-5">
-                "${escapeHtml(item.nasihat)}"
+              <p dir="${detectTextDirection(item.nasihat)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
+                detectTextDirection(item.nasihat) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichLinesHtml(item.nasihat, siteData)}
               </p>
             </div>
 
@@ -446,17 +754,21 @@
                 <span>${escapeHtml(item.durasi)}</span>
                 ${buildDraftBadge(item)}
               </div>
-              <h2 class="font-theme-display text-xl sm:text-2xl font-medium text-[#1F2937] mb-2">
-                ${escapeHtml(item.judul)}
+              <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl sm:text-2xl font-medium text-[#1F2937] mb-2 ${
+                detectTextDirection(item.judul) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichInlineHtml(item.judul, siteData)}
               </h2>
-              <p class="text-sm sm:text-[15px] text-gray-600 leading-relaxed">
-                ${escapeHtml(item.ringkasan)}
+              <p dir="${detectTextDirection(item.ringkasan)}" class="text-sm sm:text-[15px] text-gray-600 leading-relaxed ${
+                detectTextDirection(item.ringkasan) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichLinesHtml(item.ringkasan, siteData)}
               </p>
             </div>
           </div>
 
           <div class="bg-[#FAF9F6] border border-stone-200/80 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <audio controls preload="metadata" src="${escapeHtml(item.audioUrl)}" class="w-full flex-1" aria-label="Putar audio ${escapeHtml(item.judul)}">
+            <audio controls preload="metadata" src="${escapeHtml(item.audioUrl)}" class="w-full flex-1" aria-label="Putar audio ${escapeHtml(stripRichTags(item.judul))}">
               Peramban Anda belum mendukung pemutar audio HTML5.
             </audio>
             <button
@@ -488,7 +800,7 @@
             <iframe
               class="w-full h-full"
               src="https://www.youtube-nocookie.com/embed/${escapeHtml(item.youtubeId)}"
-              title="${escapeHtml(item.judul)}"
+              title="${escapeHtml(stripRichTags(item.judul))}"
               loading="lazy"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowfullscreen
@@ -505,11 +817,15 @@
                 <span>${escapeHtml(item.durasi)}</span>
                 ${buildDraftBadge(item)}
               </div>
-              <h2 class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2">
-                ${escapeHtml(item.judul)}
+              <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2 ${
+                detectTextDirection(item.judul) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichInlineHtml(item.judul, siteData)}
               </h2>
-              <p class="text-sm text-gray-600 leading-relaxed mb-5">
-                ${escapeHtml(item.ringkasan)}
+              <p dir="${detectTextDirection(item.ringkasan)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
+                detectTextDirection(item.ringkasan) === "rtl" ? "text-right" : ""
+              }">
+                ${formatRichLinesHtml(item.ringkasan, siteData)}
               </p>
             </div>
 
@@ -684,7 +1000,7 @@
     const isPreview = Boolean(opts.isPreview);
 
     state.currentData = siteData;
-    applyThemeVariables(siteData.tampilan);
+    applyThemeVariables(siteData.tampilan, siteData);
 
     const p = siteData.profil || {};
     const t = siteData.tampilan || {};
@@ -743,15 +1059,21 @@
                 <div class="${t.tampilkanSorotan !== false ? "lg:col-span-7" : "max-w-3xl"} flex flex-col justify-between">
                   <div>
                     <p class="text-xs font-semibold tracking-wider theme-text-accent mb-3">${escapeHtml(p.kicker)}</p>
-                    <h1 class="font-theme-display text-3xl sm:text-4xl font-medium leading-[1.15] tracking-tight text-[#1F2937] headline-balance mb-2">
-                      ${escapeHtml(p.judulUtama)}
+                    <h1 dir="${detectTextDirection(p.judulUtama)}" class="font-theme-display text-3xl sm:text-4xl font-medium leading-[1.15] tracking-tight text-[#1F2937] headline-balance mb-2 ${
+                      detectTextDirection(p.judulUtama) === "rtl" ? "text-right" : ""
+                    }">
+                      ${formatRichInlineHtml(p.judulUtama, siteData)}
                     </h1>
                     ${
                       p.subjudul
-                        ? `<p class="font-theme-display italic text-base sm:text-lg theme-text-accent mb-4">${escapeHtml(p.subjudul)}</p>`
+                        ? `<p dir="${detectTextDirection(p.subjudul)}" class="font-theme-display italic text-base sm:text-lg theme-text-accent mb-4 ${
+                            detectTextDirection(p.subjudul) === "rtl" ? "text-right" : ""
+                          }">${formatRichInlineHtml(p.subjudul, siteData)}</p>`
                         : ""
                     }
-                    <p class="text-base leading-relaxed text-gray-600 max-w-2xl mb-6">${escapeHtml(p.deskripsi)}</p>
+                    <p dir="${detectTextDirection(p.deskripsi)}" class="text-base leading-relaxed text-gray-600 max-w-2xl mb-6 ${
+                      detectTextDirection(p.deskripsi) === "rtl" ? "text-right" : ""
+                    }">${formatRichLinesHtml(p.deskripsi, siteData)}</p>
                     ${
                       t.tampilkanPencarian !== false
                         ? `<div class="max-w-xl"><div class="h-11 px-4 bg-white border border-stone-200 rounded-2xl flex items-center text-sm text-gray-400">Cari tulisan, ebook, flyer, audio, atau video...</div></div>`
@@ -770,8 +1092,12 @@
                           <span class="font-semibold theme-text-accent">Sorotan Pilihan</span>
                           <span class="tabular-nums">${escapeHtml(featuredArticle.tanggal)}</span>
                         </div>
-                        <h2 class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2">${escapeHtml(featuredArticle.judul)}</h2>
-                        <p class="text-sm text-gray-600 leading-relaxed mb-5">${escapeHtml(featuredArticle.ringkasan)}</p>
+                        <h2 dir="${detectTextDirection(featuredArticle.judul)}" class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2 ${
+                          detectTextDirection(featuredArticle.judul) === "rtl" ? "text-right" : ""
+                        }">${formatRichInlineHtml(featuredArticle.judul, siteData)}</h2>
+                        <p dir="${detectTextDirection(featuredArticle.ringkasan)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
+                          detectTextDirection(featuredArticle.ringkasan) === "rtl" ? "text-right" : ""
+                        }">${formatRichLinesHtml(featuredArticle.ringkasan, siteData)}</p>
                       </div>
                       <div class="space-y-3">
                         <div class="flex items-center justify-between gap-2">
@@ -780,7 +1106,7 @@
                         </div>
                         ${
                           featuredEbook
-                            ? `<div class="pt-3 border-t border-stone-200/60 flex items-center justify-between gap-2 text-xs"><span class="truncate font-medium">${escapeHtml(featuredEbook.judul)}</span><button type="button" data-preview-tab="ebook" class="font-semibold theme-text-accent shrink-0">Lihat Ebook &rarr;</button></div>`
+                            ? `<div class="pt-3 border-t border-stone-200/60 flex items-center justify-between gap-2 text-xs"><span class="truncate font-medium">${formatRichInlineHtml(featuredEbook.judul, siteData)}</span><button type="button" data-preview-tab="ebook" class="font-semibold theme-text-accent shrink-0">Lihat Ebook &rarr;</button></div>`
                             : ""
                         }
                       </div>
@@ -838,12 +1164,25 @@
 
     if (brandEl) brandEl.textContent = p.namaWebsite || "Catatan Teduh";
     if (kickerEl) kickerEl.textContent = p.kicker || "";
-    if (titleEl) titleEl.textContent = p.judulUtama || "";
+    if (titleEl) {
+      const dirTitle = detectTextDirection(p.judulUtama);
+      titleEl.setAttribute("dir", dirTitle);
+      titleEl.classList.toggle("text-right", dirTitle === "rtl");
+      titleEl.innerHTML = formatRichInlineHtml(p.judulUtama || "", siteData);
+    }
     if (subtitleEl) {
-      subtitleEl.textContent = p.subjudul || "";
+      const dirSub = detectTextDirection(p.subjudul);
+      subtitleEl.setAttribute("dir", dirSub);
+      subtitleEl.classList.toggle("text-right", dirSub === "rtl");
+      subtitleEl.innerHTML = formatRichInlineHtml(p.subjudul || "", siteData);
       subtitleEl.classList.toggle("hidden", !p.subjudul);
     }
-    if (descEl) descEl.textContent = p.deskripsi || "";
+    if (descEl) {
+      const dirDesc = detectTextDirection(p.deskripsi);
+      descEl.setAttribute("dir", dirDesc);
+      descEl.classList.toggle("text-right", dirDesc === "rtl");
+      descEl.innerHTML = formatRichLinesHtml(p.deskripsi || "", siteData);
+    }
     if (footerCopyEl) {
       footerCopyEl.textContent = `© ${p.tahunHakCipta || "2026"} ${p.namaWebsite || "Catatan Teduh"} · Disusun untuk berbagi manfaat secara terbuka.`;
     }
@@ -944,10 +1283,14 @@
               <span class="font-semibold theme-text-accent">Sorotan Pilihan</span>
               <span class="tabular-nums">${escapeHtml(featuredArticle.tanggal)}</span>
             </div>
-            <h2 class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] headline-balance mb-3">
-              ${escapeHtml(featuredArticle.judul)}
+            <h2 dir="${detectTextDirection(featuredArticle.judul)}" class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] headline-balance mb-3 ${
+              detectTextDirection(featuredArticle.judul) === "rtl" ? "text-right" : ""
+            }">
+              ${formatRichInlineHtml(featuredArticle.judul, siteData)}
             </h2>
-            <p class="text-sm text-gray-600 leading-relaxed mb-6">${escapeHtml(featuredArticle.ringkasan)}</p>
+            <p dir="${detectTextDirection(featuredArticle.ringkasan)}" class="text-sm text-gray-600 leading-relaxed mb-6 ${
+              detectTextDirection(featuredArticle.ringkasan) === "rtl" ? "text-right" : ""
+            }">${formatRichLinesHtml(featuredArticle.ringkasan, siteData)}</p>
           </div>
           <div class="relative space-y-4">
             <div class="flex items-center justify-between gap-3">
@@ -966,7 +1309,7 @@
               <div class="pt-4 border-t border-stone-200/60 flex items-center justify-between gap-3">
                 <div class="min-w-0">
                   <p class="text-[11px] font-medium text-gray-400">Ebook Terbaru</p>
-                  <p class="text-xs sm:text-sm font-medium text-[#1F2937] truncate">${escapeHtml(featuredEbook.judul)}</p>
+                  <p class="text-xs sm:text-sm font-medium text-[#1F2937] truncate">${formatRichInlineHtml(featuredEbook.judul, siteData)}</p>
                 </div>
                 <button type="button" data-jump-tab="ebook" class="text-xs font-semibold theme-text-accent hover:underline whitespace-nowrap shrink-0">
                   Lihat Ebook &rarr;
@@ -1086,13 +1429,26 @@
       <span aria-hidden="true">·</span>
       <span class="tabular-nums">${escapeHtml(item.waktuBaca)}</span>
     `;
-    modalEls.articleTitle.textContent = item.judul;
+    const titleDir = detectTextDirection(item.judul);
+    modalEls.articleTitle.setAttribute("dir", titleDir);
+    modalEls.articleTitle.classList.toggle("text-right", titleDir === "rtl");
+    modalEls.articleTitle.innerHTML = formatRichInlineHtml(item.judul, src);
+
     const paragraphs = Array.isArray(item.isi) ? item.isi : [item.ringkasan];
     modalEls.articleBody.innerHTML = paragraphs
-      .map((p, idx) => `<p class="${idx === 0 ? "prose-dropcap" : ""}">${escapeHtml(p)}</p>`)
+      .map((p, idx) => {
+        const pDir = detectTextDirection(p);
+        const cls =
+          pDir === "rtl"
+            ? "text-right leading-[2.15]"
+            : idx === 0
+            ? "prose-dropcap"
+            : "";
+        return `<p dir="${pDir}" class="${cls}">${formatRichLinesHtml(p, src)}</p>`;
+      })
       .join("");
 
-    const shareText = `${item.judul}\n\n${item.ringkasan}\n\nBaca selengkapnya di: ${window.location.href}`;
+    const shareText = `${stripRichTags(item.judul)}\n\n${stripRichTags(item.ringkasan)}\n\nBaca selengkapnya di: ${window.location.href}`;
     modalEls.articleWa.href = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
     if (modalEls.articleCopyLabel) modalEls.articleCopyLabel.textContent = "Salin Teks";
 
@@ -1117,10 +1473,15 @@
 
     state.activeFlyer = item;
     modalEls.lightboxImg.src = item.gambar;
-    modalEls.lightboxImg.alt = item.judul;
-    modalEls.lightboxTitle.textContent = item.judul;
+    modalEls.lightboxImg.alt = stripRichTags(item.judul);
+    const titleDir = detectTextDirection(item.judul);
+    modalEls.lightboxTitle.setAttribute("dir", titleDir);
+    modalEls.lightboxTitle.innerHTML = formatRichInlineHtml(item.judul, src);
     modalEls.lightboxMeta.textContent = `${item.tema} · ${item.tanggal}`;
-    modalEls.lightboxCaption.textContent = `"${item.nasihat}"`;
+    const capDir = detectTextDirection(item.nasihat);
+    modalEls.lightboxCaption.setAttribute("dir", capDir);
+    modalEls.lightboxCaption.classList.toggle("text-right", capDir === "rtl");
+    modalEls.lightboxCaption.innerHTML = formatRichLinesHtml(item.nasihat, src);
     modalEls.lightboxModal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
     modalEls.lightboxClose.focus();
@@ -1257,7 +1618,7 @@
     if (modalEls.articleCopy) {
       modalEls.articleCopy.addEventListener("click", async () => {
         if (!state.activeArticle) return;
-        const txt = `${state.activeArticle.judul}\n\n${(state.activeArticle.isi || []).join("\n\n")}`;
+        const txt = `${stripRichTags(state.activeArticle.judul)}\n\n${(state.activeArticle.isi || []).map(stripRichTags).join("\n\n")}`;
         try {
           await navigator.clipboard.writeText(txt);
           if (modalEls.articleCopyLabel) modalEls.articleCopyLabel.textContent = "Tersalin";
@@ -1315,6 +1676,7 @@
       tampilkanSorotan: true,
       tampilkanPencarian: true,
       tabAktif: ["tulisan", "ebook", "flyer", "audio", "video", "diskusi"],
+      koleksiFont: BUILTIN_FONT_COLLECTION,
     },
     profil: {
       namaWebsite: "Catatan Teduh",
@@ -1347,6 +1709,7 @@
     if (!Array.isArray(tampilan.tabAktif) || !tampilan.tabAktif.length) {
       tampilan.tabAktif = [...DEFAULT_SITE_SCHEMA.tampilan.tabAktif];
     }
+    tampilan.koleksiFont = getFontCollection({ tampilan });
 
     const profil = { ...DEFAULT_SITE_SCHEMA.profil, ...(src.profil || {}) };
     const giscus = { ...DEFAULT_SITE_SCHEMA.giscus, ...(src.giscus || {}) };
@@ -1397,9 +1760,17 @@
   window.CatatanTeduhApp = {
     THEME_PALETTES,
     FONT_PRESETS,
+    R2_FONT_BASE_URL,
+    BUILTIN_FONT_COLLECTION,
     TAB_META,
     deepClone,
     escapeHtml,
+    stripRichTags,
+    resolveR2FontUrl,
+    getFontCollection,
+    syncDynamicFonts,
+    detectTextDirection,
+    formatRichInlineHtml,
     normalizeSiteData,
     renderSiteInto,
     openArticleModal,
