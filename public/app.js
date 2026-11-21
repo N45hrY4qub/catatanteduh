@@ -74,7 +74,7 @@
   const BUILTIN_FONT_COLLECTION = [
     {
       id: "uthmanic-hafs",
-      nama: "Uthmanic Hafs v22 (Al-Qur'an R2)",
+      nama: "Uthmanic Hafs v22",
       sumber: "r2",
       family: "UthmanicHafsR2",
       url: "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/font/uthmanic_hafs_v22.woff2",
@@ -83,7 +83,7 @@
     },
     {
       id: "amiri-quran",
-      nama: "Amiri Quran (Al-Qur'an Google)",
+      nama: "Amiri Quran",
       sumber: "google",
       family: "Amiri Quran",
       kategori: "arab",
@@ -91,7 +91,7 @@
     },
     {
       id: "amiri",
-      nama: "Amiri (Hadis & Kitab Google)",
+      nama: "Amiri",
       sumber: "google",
       family: "Amiri",
       kategori: "arab",
@@ -99,7 +99,7 @@
     },
     {
       id: "scheherazade-new",
-      nama: "Scheherazade New (Arab Klasik Google)",
+      nama: "Scheherazade New",
       sumber: "google",
       family: "Scheherazade New",
       kategori: "arab",
@@ -107,7 +107,7 @@
     },
     {
       id: "noto-naskh-arabic",
-      nama: "Noto Naskh Arabic (Arab Umum Google)",
+      nama: "Noto Naskh Arabic",
       sumber: "google",
       family: "Noto Naskh Arabic",
       kategori: "arab",
@@ -115,7 +115,7 @@
     },
     {
       id: "readex-pro",
-      nama: "Readex Pro (Arab Modern Google)",
+      nama: "Readex Pro",
       sumber: "google",
       family: "Readex Pro",
       kategori: "arab",
@@ -123,7 +123,7 @@
     },
     {
       id: "fraunces",
-      nama: "Fraunces (Editorial Google)",
+      nama: "Fraunces",
       sumber: "google",
       family: "Fraunces",
       kategori: "latin",
@@ -131,7 +131,7 @@
     },
     {
       id: "plus-jakarta-sans",
-      nama: "Plus Jakarta Sans (Modern Google)",
+      nama: "Plus Jakarta Sans",
       sumber: "google",
       family: "Plus Jakarta Sans",
       kategori: "latin",
@@ -139,7 +139,7 @@
     },
     {
       id: "source-serif-4",
-      nama: "Source Serif 4 (Klasik Buku Google)",
+      nama: "Source Serif 4",
       sumber: "google",
       family: "Source Serif 4",
       kategori: "latin",
@@ -147,7 +147,7 @@
     },
     {
       id: "lora",
-      nama: "Lora (Sastra Google)",
+      nama: "Lora",
       sumber: "google",
       family: "Lora",
       kategori: "latin",
@@ -207,6 +207,12 @@
     return "woff2";
   }
 
+  function cleanFontDisplayName(name) {
+    return String(name || "")
+      .replace(/\s*\([^)]*\)\s*$/g, "")
+      .trim();
+  }
+
   function getFontCollection(siteData) {
     const custom =
       siteData && siteData.tampilan && Array.isArray(siteData.tampilan.koleksiFont)
@@ -216,8 +222,13 @@
     BUILTIN_FONT_COLLECTION.forEach((f) => byId.set(f.id, deepClone(f)));
     custom.forEach((f) => {
       if (f && f.id && f.family) {
+        const builtinItem = byId.get(f.id);
+        const cleanNama = builtinItem
+          ? builtinItem.nama
+          : cleanFontDisplayName(f.nama) || f.family;
         byId.set(f.id, {
           ...f,
+          nama: cleanNama,
           url: f.sumber === "r2" ? resolveR2FontUrl(f.url) : f.url || "",
         });
       }
@@ -297,10 +308,25 @@
     }
   }
 
+  function sanitizeRichLinkUrl(rawUrl) {
+    const trimmed = String(rawUrl || "").trim();
+    if (!trimmed) return "";
+    if (/^(javascript|data|vbscript):/i.test(trimmed)) return "";
+    if (/^(https?:\/\/|mailto:|tel:|\/|#)/i.test(trimmed)) return trimmed;
+    if (/^www\./i.test(trimmed) || /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return "";
+  }
+
   function stripRichTags(str) {
     return String(str || "")
       .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\]/gi, "")
-      .replace(/\[\/(?:font|arab)\]/gi, "");
+      .replace(/\[\/(?:font|arab)\]/gi, "")
+      .replace(/\[(?:b|i|u|s)\]/gi, "")
+      .replace(/\[\/(?:b|i|u|s)\]/gi, "")
+      .replace(/\[url=[^\]]+\]/gi, "")
+      .replace(/\[\/url\]/gi, "");
   }
 
   function detectTextDirection(rawText) {
@@ -342,7 +368,8 @@
 
     const fonts = getFontCollection(siteData || state.currentData || window.SITE_DATA || {});
     const fontMap = new Map(fonts.map((f) => [f.id, f]));
-    const tagRegex = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
+    const tagRegex =
+      /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
 
     let result = "";
     let lastIndex = 0;
@@ -354,41 +381,66 @@
         result += wrapArabicRunsInEscaped(escapeHtml(plainPart));
       }
 
-      const tagType = match[1].toLowerCase();
-      const fontId = (match[2] || "").toLowerCase();
-      const rawSize = match[3] ? parseInt(match[3], 10) : 0;
-      const fontSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
-      const innerRaw = match[4] || "";
-      const fontObj = fontId ? fontMap.get(fontId) : null;
-      const plainInner = stripRichTags(innerRaw);
-      const hasArabic = ARABIC_CHAR_RE.test(plainInner);
-
-      const safeFam = fontObj ? String(fontObj.family).replace(/["\\']/g, "") : "";
-      const fallback = fontObj && fontObj.kategori === "arab" ? "'Amiri', serif" : "Georgia, serif";
-      const styleParts = [];
-      if (safeFam) {
-        styleParts.push(`font-family: '${safeFam}', ${fallback};`);
-      }
-      if (fontSize) {
-        styleParts.push(
-          `font-size: ${fontSize}px; line-height: ${tagType === "arab" || hasArabic ? "1.95" : "1.45"};`
-        );
-      }
-      const inlineStyle = styleParts.join(" ");
-
-      if (tagType === "arab") {
-        const innerHtml = formatRichInlineHtml(innerRaw, siteData);
-        result += `<span lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}"${
-          inlineStyle ? ` style="${inlineStyle}"` : ""
-        }>${innerHtml}</span>`;
-      } else {
-        const innerHtml = formatRichInlineHtml(innerRaw, siteData);
-        if (fontObj || fontSize) {
-          result += `<span${hasArabic ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
-            hasArabic ? " ct-font-arab" : ""
-          }" style="${inlineStyle}">${innerHtml}</span>`;
+      if (match[5]) {
+        const inlineTag = match[5].toLowerCase();
+        const innerHtml = formatRichInlineHtml(match[6] || "", siteData);
+        if (inlineTag === "b") {
+          result += `<strong class="font-bold">${innerHtml}</strong>`;
+        } else if (inlineTag === "i") {
+          result += `<em class="italic">${innerHtml}</em>`;
+        } else if (inlineTag === "u") {
+          result += `<u class="underline underline-offset-2">${innerHtml}</u>`;
+        } else if (inlineTag === "s") {
+          result += `<s class="line-through">${innerHtml}</s>`;
+        }
+      } else if (match[7] !== undefined) {
+        const decodedUrl = String(match[7] || "").replace(/%5D/gi, "]");
+        const safeUrl = sanitizeRichLinkUrl(decodedUrl);
+        const innerHtml = formatRichInlineHtml(match[8] || "", siteData);
+        if (safeUrl) {
+          result += `<a href="${escapeHtml(
+            safeUrl
+          )}" target="_blank" rel="noopener noreferrer" class="ct-rich-link underline underline-offset-2 theme-text-accent hover:opacity-80 transition-opacity">${innerHtml}</a>`;
         } else {
           result += innerHtml;
+        }
+      } else {
+        const tagType = match[1].toLowerCase();
+        const fontId = (match[2] || "").toLowerCase();
+        const rawSize = match[3] ? parseInt(match[3], 10) : 0;
+        const fontSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
+        const innerRaw = match[4] || "";
+        const fontObj = fontId ? fontMap.get(fontId) : null;
+        const plainInner = stripRichTags(innerRaw);
+        const hasArabic = ARABIC_CHAR_RE.test(plainInner);
+
+        const safeFam = fontObj ? String(fontObj.family).replace(/["\\']/g, "") : "";
+        const fallback = fontObj && fontObj.kategori === "arab" ? "'Amiri', serif" : "Georgia, serif";
+        const styleParts = [];
+        if (safeFam) {
+          styleParts.push(`font-family: '${safeFam}', ${fallback};`);
+        }
+        if (fontSize) {
+          styleParts.push(
+            `font-size: ${fontSize}px; line-height: ${tagType === "arab" || hasArabic ? "1.95" : "1.45"};`
+          );
+        }
+        const inlineStyle = styleParts.join(" ");
+
+        if (tagType === "arab") {
+          const innerHtml = formatRichInlineHtml(innerRaw, siteData);
+          result += `<span lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}"${
+            inlineStyle ? ` style="${inlineStyle}"` : ""
+          }>${innerHtml}</span>`;
+        } else {
+          const innerHtml = formatRichInlineHtml(innerRaw, siteData);
+          if (fontObj || fontSize) {
+            result += `<span${hasArabic ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
+              hasArabic ? " ct-font-arab" : ""
+            }" style="${inlineStyle}">${innerHtml}</span>`;
+          } else {
+            result += innerHtml;
+          }
         }
       }
 
@@ -404,7 +456,7 @@
 
   function distributeMultilineRichTags(rawText) {
     return String(rawText || "").replace(
-      /\[(font|arab)((?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
+      /\[(font|arab|b|i|u|s|url)((?:=[^\]]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
       (_full, tag, attrs, inner) => {
         if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
         return inner
@@ -1800,6 +1852,7 @@
     TAB_META,
     deepClone,
     escapeHtml,
+    sanitizeRichLinkUrl,
     stripRichTags,
     resolveR2FontUrl,
     getFontCollection,

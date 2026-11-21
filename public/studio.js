@@ -153,8 +153,18 @@
     floatingFontSelect: document.getElementById("studio-text-font-select"),
     floatingSizeInput: document.getElementById("studio-text-size-input"),
     floatingSizePreset: document.getElementById("studio-text-size-preset"),
+    btnFormatBold: document.getElementById("btn-format-bold"),
+    btnFormatItalic: document.getElementById("btn-format-italic"),
+    btnFormatUnderline: document.getElementById("btn-format-underline"),
+    btnFormatStrike: document.getElementById("btn-format-strike"),
+    btnFormatLink: document.getElementById("btn-format-link"),
     btnApplyArabBlock: document.getElementById("btn-apply-arab-block"),
     btnClearTextFont: document.getElementById("btn-clear-text-font"),
+    floatingLinkRow: document.getElementById("studio-floating-link-row"),
+    textLinkInput: document.getElementById("studio-text-link-input"),
+    btnApplyTextLink: document.getElementById("btn-apply-text-link"),
+    btnRemoveTextLink: document.getElementById("btn-remove-text-link"),
+    btnCancelTextLink: document.getElementById("btn-cancel-text-link"),
     studioPreviewFrame: document.getElementById("studio-preview-frame"),
     studioPreviewMount: document.getElementById("studio-preview-mount"),
     studioExitBtn: document.getElementById("studio-exit-btn"),
@@ -504,6 +514,10 @@ window.SITE_DATA = ${serialized};
       clearTimeout(studio.floatingBlurTimer);
       studio.floatingBlurTimer = null;
     }
+    if (els.floatingLinkRow) {
+      els.floatingLinkRow.classList.add("hidden");
+      els.floatingLinkRow.classList.remove("flex");
+    }
     if (!els.floatingFontBar) return;
     els.floatingFontBar.classList.add("hidden");
     els.floatingFontBar.classList.remove("flex");
@@ -634,7 +648,8 @@ window.SITE_DATA = ${serialized};
 
     function renderTokens(segment) {
       const text = String(segment || "");
-      const re = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
+      const re =
+        /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
       let out = "";
       let lastIdx = 0;
       let m;
@@ -644,34 +659,59 @@ window.SITE_DATA = ${serialized};
           out += App.escapeHtml(text.slice(lastIdx, m.index));
         }
 
-        const tagType = m[1].toLowerCase();
-        const fontId = (m[2] || "").toLowerCase();
-        const rawSize = m[3] ? parseInt(m[3], 10) : 0;
-        const cleanSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
-        const innerRaw = m[4] || "";
-        const fontObj = getFontMetaById(fontId);
-        const plainInner = App.stripRichTags(innerRaw);
-        const hasArab = ARABIC_CHAR_TEST_RE.test(plainInner);
-        const inlineStyle = buildRtSpanCssAttr(tagType, fontObj, cleanSize, hasArab);
-        const innerHtml = renderTokens(innerRaw);
-
-        const attrs = [
-          `data-rt-type="${tagType}"`,
-          fontId ? `data-rt-font="${App.escapeHtml(fontId)}"` : "",
-          cleanSize ? `data-rt-size="${cleanSize}"` : "",
-          inlineStyle ? `style="${inlineStyle}"` : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-
-        if (tagType === "arab") {
-          out += `<span ${attrs} lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}">${innerHtml}</span>`;
-        } else if (fontObj || cleanSize) {
-          out += `<span ${attrs}${hasArab ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
-            hasArab ? " ct-font-arab" : ""
-          }">${innerHtml}</span>`;
+        if (m[5]) {
+          const inlineTag = m[5].toLowerCase();
+          const innerHtml = renderTokens(m[6] || "");
+          if (inlineTag === "b") {
+            out += `<strong>${innerHtml}</strong>`;
+          } else if (inlineTag === "i") {
+            out += `<em>${innerHtml}</em>`;
+          } else if (inlineTag === "u") {
+            out += `<u>${innerHtml}</u>`;
+          } else if (inlineTag === "s") {
+            out += `<s>${innerHtml}</s>`;
+          }
+        } else if (m[7] !== undefined) {
+          const decodedUrl = String(m[7] || "").replace(/%5D/gi, "]");
+          const safeUrl = App.sanitizeRichLinkUrl(decodedUrl);
+          const innerHtml = renderTokens(m[8] || "");
+          if (safeUrl) {
+            out += `<a href="${App.escapeHtml(
+              safeUrl
+            )}" data-rt-link="true" class="ct-rich-link underline theme-text-accent">${innerHtml}</a>`;
+          } else {
+            out += innerHtml;
+          }
         } else {
-          out += innerHtml;
+          const tagType = m[1].toLowerCase();
+          const fontId = (m[2] || "").toLowerCase();
+          const rawSize = m[3] ? parseInt(m[3], 10) : 0;
+          const cleanSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
+          const innerRaw = m[4] || "";
+          const fontObj = getFontMetaById(fontId);
+          const plainInner = App.stripRichTags(innerRaw);
+          const hasArab = ARABIC_CHAR_TEST_RE.test(plainInner);
+          const inlineStyle = buildRtSpanCssAttr(tagType, fontObj, cleanSize, hasArab);
+          const innerHtml = renderTokens(innerRaw);
+
+          const attrs = [
+            `data-rt-type="${tagType}"`,
+            fontId ? `data-rt-font="${App.escapeHtml(fontId)}"` : "",
+            cleanSize ? `data-rt-size="${cleanSize}"` : "",
+            inlineStyle ? `style="${inlineStyle}"` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          if (tagType === "arab") {
+            out += `<span ${attrs} lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}">${innerHtml}</span>`;
+          } else if (fontObj || cleanSize) {
+            out += `<span ${attrs}${hasArab ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
+              hasArab ? " ct-font-arab" : ""
+            }">${innerHtml}</span>`;
+          } else {
+            out += innerHtml;
+          }
         }
 
         lastIdx = re.lastIndex;
@@ -697,6 +737,19 @@ window.SITE_DATA = ${serialized};
         return `<div dir="${dir}"${cls}>${inner}</div>`;
       })
       .join("");
+  }
+
+  function wrapSerializedRichTagPerLine(tagName, attrStr, inner) {
+    if (!inner) return "";
+    const open = `[${tagName}${attrStr || ""}]`;
+    const close = `[/${tagName}]`;
+    if (inner.includes("\n")) {
+      return inner
+        .split("\n")
+        .map((seg) => (seg ? `${open}${seg}${close}` : ""))
+        .join("\n");
+    }
+    return `${open}${inner}${close}`;
   }
 
   function serializeInlineNodeToRichText(node) {
@@ -725,23 +778,52 @@ window.SITE_DATA = ${serialized};
       inner += serializeInlineNodeToRichText(child);
     });
 
+    if (!inner) return "";
+
     if (node.dataset && node.dataset.rtType) {
       const type = node.dataset.rtType === "arab" ? "arab" : "font";
       const fontId = (node.dataset.rtFont || "").trim().toLowerCase();
       const size = parseInt(node.dataset.rtSize || "0", 10);
-      if (!inner) return "";
       if (type === "font" && !fontId && !(size >= 10 && size <= 72)) return inner;
-      const open = `[${type}${fontId ? `=${fontId}` : ""}${size >= 10 && size <= 72 ? ` size=${size}` : ""}]`;
-      if (inner.includes("\n")) {
-        return inner
-          .split("\n")
-          .map((seg) => (seg ? `${open}${seg}[/${type}]` : ""))
-          .join("\n");
-      }
-      return `${open}${inner}[/${type}]`;
+      const attrs = `${fontId ? `=${fontId}` : ""}${size >= 10 && size <= 72 ? ` size=${size}` : ""}`;
+      return wrapSerializedRichTagPerLine(type, attrs, inner);
     }
 
-    return inner;
+    const tag = node.tagName;
+    if (tag === "A") {
+      const safeHref = App.sanitizeRichLinkUrl(node.getAttribute("href") || "");
+      if (!safeHref) return inner;
+      const encodedHref = safeHref.replace(/\]/g, "%5D");
+      return wrapSerializedRichTagPerLine("url", `=${encodedHref}`, inner);
+    }
+    if (tag === "B" || tag === "STRONG") {
+      return wrapSerializedRichTagPerLine("b", "", inner);
+    }
+    if (tag === "I" || tag === "EM") {
+      return wrapSerializedRichTagPerLine("i", "", inner);
+    }
+    if (tag === "U") {
+      return wrapSerializedRichTagPerLine("u", "", inner);
+    }
+    if (tag === "S" || tag === "STRIKE" || tag === "DEL") {
+      return wrapSerializedRichTagPerLine("s", "", inner);
+    }
+
+    // Fallback jika browser menyisipkan inline CSS (styleWithCSS)
+    let out = inner;
+    const st = node.style;
+    if (st) {
+      const deco = String(st.textDecorationLine || st.textDecoration || "").toLowerCase();
+      if (deco.includes("line-through")) out = wrapSerializedRichTagPerLine("s", "", out);
+      if (deco.includes("underline")) out = wrapSerializedRichTagPerLine("u", "", out);
+      if (String(st.fontStyle || "").toLowerCase() === "italic") out = wrapSerializedRichTagPerLine("i", "", out);
+      const fw = String(st.fontWeight || "").toLowerCase();
+      if (fw === "bold" || fw === "bolder" || parseInt(fw, 10) >= 600) {
+        out = wrapSerializedRichTagPerLine("b", "", out);
+      }
+    }
+
+    return out;
   }
 
   function collectEditorLines(container) {
@@ -2444,6 +2526,55 @@ window.SITE_DATA = ${serialized};
       );
     }
 
+    function stripInlineFormattingNodes(containerNode) {
+      if (!containerNode || !containerNode.querySelectorAll) return;
+      Array.from(containerNode.querySelectorAll("b, strong, i, em, u, s, strike, del, a")).forEach((el) => {
+        unwrapDomNode(el);
+      });
+    }
+
+    function findEnclosingTag(node, rootEl, tagNames) {
+      let cur = node;
+      while (cur && cur !== rootEl) {
+        if (cur.nodeType === Node.ELEMENT_NODE && tagNames.includes(cur.tagName)) {
+          return cur;
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    }
+
+    function setFormatButtonActive(btn, isActive) {
+      if (!btn) return;
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      btn.classList.toggle("bg-emerald-50", Boolean(isActive));
+      btn.classList.toggle("text-emerald-800", Boolean(isActive));
+      btn.classList.toggle("text-gray-700", !isActive);
+    }
+
+    function syncFloatingFormatButtons(editorEl, range) {
+      const activeNode = range && editorEl && editorEl.contains(range.startContainer) ? range.startContainer : null;
+      const safeCmdState = (cmd) => {
+        try {
+          return Boolean(document.activeElement === editorEl && document.queryCommandState(cmd));
+        } catch (_e) {
+          return false;
+        }
+      };
+
+      const isBold = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["B", "STRONG"])) || safeCmdState("bold");
+      const isItalic = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["I", "EM"])) || safeCmdState("italic");
+      const isUnderline = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["U"])) || safeCmdState("underline");
+      const isStrike = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["S", "STRIKE", "DEL"])) || safeCmdState("strikeThrough");
+      const isLink = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["A"]));
+
+      setFormatButtonActive(els.btnFormatBold, isBold);
+      setFormatButtonActive(els.btnFormatItalic, isItalic);
+      setFormatButtonActive(els.btnFormatUnderline, isUnderline);
+      setFormatButtonActive(els.btnFormatStrike, isStrike);
+      setFormatButtonActive(els.btnFormatLink, isLink);
+    }
+
     function syncFloatingBarControlsFromEditor(editorEl, range) {
       if (!els.floatingFontSelect || !els.floatingSizeInput) return;
       let rtSpan = null;
@@ -2493,6 +2624,8 @@ window.SITE_DATA = ${serialized};
           ? sizeVal
           : "";
       }
+
+      syncFloatingFormatButtons(editorEl, range);
     }
 
     function trackActiveRichEditor(rawTarget) {
@@ -2765,6 +2898,7 @@ window.SITE_DATA = ${serialized};
               allBlocks.forEach((blk) => {
                 if (range.intersectsNode(blk)) {
                   stripNestedRtSpans(blk);
+                  stripInlineFormattingNodes(blk);
                 }
               });
             } else if (
@@ -2777,6 +2911,7 @@ window.SITE_DATA = ${serialized};
               const parent = enclosing.parentNode;
               const firstChild = enclosing.firstChild;
               const lastChild = enclosing.lastChild;
+              stripInlineFormattingNodes(enclosing);
               unwrapDomNode(enclosing);
               if (firstChild && lastChild && parent) {
                 const newR = document.createRange();
@@ -2791,6 +2926,7 @@ window.SITE_DATA = ${serialized};
             } else {
               const frag = range.extractContents();
               stripNestedRtSpans(frag);
+              stripInlineFormattingNodes(frag);
               const markerStart = frag.firstChild;
               const markerEnd = frag.lastChild;
               range.insertNode(frag);
@@ -2808,6 +2944,7 @@ window.SITE_DATA = ${serialized};
             }
           } else if (enclosing) {
             const firstChild = enclosing.firstChild;
+            stripInlineFormattingNodes(enclosing);
             unwrapDomNode(enclosing);
             if (firstChild) {
               placeCaretInsideEnd(firstChild.nodeType === Node.TEXT_NODE ? firstChild.parentNode || editorEl : firstChild, editorEl, returnFocus);
@@ -2816,11 +2953,14 @@ window.SITE_DATA = ${serialized};
             const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
             if (lineBlock) {
               stripNestedRtSpans(lineBlock);
+              stripInlineFormattingNodes(lineBlock);
             } else {
               stripNestedRtSpans(editorEl);
+              stripInlineFormattingNodes(editorEl);
             }
           } else {
             stripNestedRtSpans(editorEl);
+            stripInlineFormattingNodes(editorEl);
           }
         } else {
           const targetType = mode === "arab-block" ? "arab" : "font";
@@ -3021,6 +3161,230 @@ window.SITE_DATA = ${serialized};
       }
     }
 
+    function toggleInlineFormat(cmd) {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+
+      let range = null;
+      const liveSel = window.getSelection();
+      if (liveSel && liveSel.rangeCount > 0) {
+        const liveR = liveSel.getRangeAt(0);
+        if (editorEl.contains(liveR.commonAncestorContainer)) {
+          range = liveR.cloneRange();
+        }
+      }
+      if (!range && targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)) {
+        range = targetInfo.range.cloneRange();
+      }
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editorEl);
+        range.collapse(false);
+      }
+
+      trimTrailingZeroOffsetBlockBoundary(range, editorEl);
+
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        if (liveSel) {
+          liveSel.removeAllRanges();
+          liveSel.addRange(range);
+        }
+        try {
+          document.execCommand("styleWithCSS", false, false);
+        } catch (_e) {}
+        document.execCommand(cmd, false, null);
+
+        if (liveSel && liveSel.rangeCount > 0) {
+          const updatedR = liveSel.getRangeAt(0);
+          if (editorEl.contains(updatedR.commonAncestorContainer)) {
+            studio.lastTextControl = { el: editorEl, range: updatedR.cloneRange() };
+          }
+        }
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      syncFloatingBarControlsFromEditor(editorEl, studio.lastTextControl ? studio.lastTextControl.range : null);
+      positionFloatingFontBar(editorEl);
+    }
+
+    function openFloatingLinkRow() {
+      if (!els.floatingLinkRow || !els.textLinkInput) return;
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+
+      const editorEl = targetInfo.el;
+      const range = targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
+        ? targetInfo.range
+        : null;
+      const anchor = range ? findEnclosingTag(range.startContainer, editorEl, ["A"]) : null;
+
+      els.textLinkInput.classList.remove("border-red-500");
+      els.textLinkInput.value = anchor ? anchor.getAttribute("href") || "" : "";
+      if (els.btnRemoveTextLink) {
+        els.btnRemoveTextLink.classList.toggle("hidden", !anchor);
+      }
+
+      els.floatingLinkRow.classList.remove("hidden");
+      els.floatingLinkRow.classList.add("flex");
+      positionFloatingFontBar(editorEl);
+      els.textLinkInput.focus();
+      els.textLinkInput.select();
+    }
+
+    function closeFloatingLinkRow(refocusEditor) {
+      if (els.floatingLinkRow) {
+        els.floatingLinkRow.classList.add("hidden");
+        els.floatingLinkRow.classList.remove("flex");
+      }
+      if (els.textLinkInput) {
+        els.textLinkInput.classList.remove("border-red-500");
+      }
+      if (refocusEditor && studio.lastTextControl && studio.lastTextControl.el) {
+        const editorEl = studio.lastTextControl.el;
+        studio.suppressEditorTrack = true;
+        try {
+          editorEl.focus({ preventScroll: true });
+          const sel = window.getSelection();
+          if (sel && studio.lastTextControl.range && editorEl.contains(studio.lastTextControl.range.commonAncestorContainer)) {
+            sel.removeAllRanges();
+            sel.addRange(studio.lastTextControl.range);
+          }
+        } finally {
+          studio.suppressEditorTrack = false;
+        }
+        syncFloatingBarControlsFromEditor(editorEl, studio.lastTextControl.range);
+        positionFloatingFontBar(editorEl);
+      }
+    }
+
+    function applyFloatingLink() {
+      if (!els.textLinkInput) return;
+      const safeUrl = App.sanitizeRichLinkUrl(els.textLinkInput.value);
+      if (!safeUrl) {
+        els.textLinkInput.classList.add("border-red-500");
+        els.textLinkInput.focus();
+        return;
+      }
+
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+
+      const editorEl = targetInfo.el;
+      let range =
+        targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
+          ? targetInfo.range.cloneRange()
+          : null;
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editorEl);
+        range.collapse(false);
+      }
+
+      trimTrailingZeroOffsetBlockBoundary(range, editorEl);
+
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const existingAnchor = findEnclosingTag(range.startContainer, editorEl, ["A"]);
+
+        if (existingAnchor) {
+          existingAnchor.setAttribute("href", safeUrl);
+          existingAnchor.dataset.rtLink = "true";
+          existingAnchor.className = "ct-rich-link underline theme-text-accent";
+          selectNodeContents(existingAnchor, editorEl, true);
+        } else if (!range.collapsed) {
+          const frag = range.extractContents();
+          Array.from(frag.querySelectorAll("a")).forEach((a) => unwrapDomNode(a));
+          const anchor = document.createElement("a");
+          anchor.setAttribute("href", safeUrl);
+          anchor.dataset.rtLink = "true";
+          anchor.className = "ct-rich-link underline theme-text-accent";
+          anchor.appendChild(frag);
+          range.insertNode(anchor);
+          selectNodeContents(anchor, editorEl, true);
+        } else {
+          const anchor = document.createElement("a");
+          anchor.setAttribute("href", safeUrl);
+          anchor.dataset.rtLink = "true";
+          anchor.className = "ct-rich-link underline theme-text-accent";
+          anchor.textContent = safeUrl;
+          range.insertNode(anchor);
+          selectNodeContents(anchor, editorEl, true);
+        }
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      closeFloatingLinkRow(true);
+    }
+
+    function removeFloatingLink() {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+
+      const editorEl = targetInfo.el;
+      const range =
+        targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
+          ? targetInfo.range.cloneRange()
+          : null;
+      if (!range) return;
+
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const existingAnchor = findEnclosingTag(range.startContainer, editorEl, ["A"]);
+        if (existingAnchor) {
+          const firstChild = existingAnchor.firstChild;
+          const lastChild = existingAnchor.lastChild;
+          unwrapDomNode(existingAnchor);
+          if (firstChild && lastChild) {
+            const newR = document.createRange();
+            newR.setStartBefore(firstChild);
+            newR.setEndAfter(lastChild);
+            const sel = window.getSelection();
+            if (sel) {
+              sel.removeAllRanges();
+              sel.addRange(newR);
+            }
+            studio.lastTextControl = { el: editorEl, range: newR.cloneRange() };
+          }
+        } else if (!range.collapsed) {
+          Array.from(editorEl.querySelectorAll("a")).forEach((a) => {
+            try {
+              if (range.intersectsNode(a)) unwrapDomNode(a);
+            } catch (_e) {}
+          });
+        }
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      closeFloatingLinkRow(true);
+    }
+
     if (els.floatingFontSelect) {
       els.floatingFontSelect.addEventListener("change", () => {
         applyFloatingStyle("style", { returnFocus: true });
@@ -3054,6 +3418,52 @@ window.SITE_DATA = ${serialized};
       });
     }
 
+    if (els.btnFormatBold) {
+      els.btnFormatBold.addEventListener("click", () => toggleInlineFormat("bold"));
+    }
+    if (els.btnFormatItalic) {
+      els.btnFormatItalic.addEventListener("click", () => toggleInlineFormat("italic"));
+    }
+    if (els.btnFormatUnderline) {
+      els.btnFormatUnderline.addEventListener("click", () => toggleInlineFormat("underline"));
+    }
+    if (els.btnFormatStrike) {
+      els.btnFormatStrike.addEventListener("click", () => toggleInlineFormat("strikeThrough"));
+    }
+    if (els.btnFormatLink) {
+      els.btnFormatLink.addEventListener("click", () => {
+        if (els.floatingLinkRow && !els.floatingLinkRow.classList.contains("hidden")) {
+          closeFloatingLinkRow(true);
+        } else {
+          openFloatingLinkRow();
+        }
+      });
+    }
+    if (els.btnApplyTextLink) {
+      els.btnApplyTextLink.addEventListener("click", applyFloatingLink);
+    }
+    if (els.btnRemoveTextLink) {
+      els.btnRemoveTextLink.addEventListener("click", removeFloatingLink);
+    }
+    if (els.btnCancelTextLink) {
+      els.btnCancelTextLink.addEventListener("click", () => closeFloatingLinkRow(true));
+    }
+    if (els.textLinkInput) {
+      els.textLinkInput.addEventListener("input", () => {
+        els.textLinkInput.classList.remove("border-red-500");
+      });
+      els.textLinkInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applyFloatingLink();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closeFloatingLinkRow(true);
+        }
+      });
+    }
+
     if (els.btnApplyArabBlock) {
       els.btnApplyArabBlock.addEventListener("click", () => {
         applyFloatingStyle("arab-block", { returnFocus: true });
@@ -3062,6 +3472,7 @@ window.SITE_DATA = ${serialized};
 
     if (els.btnClearTextFont) {
       els.btnClearTextFont.addEventListener("click", () => {
+        closeFloatingLinkRow(false);
         applyFloatingStyle("clear", { returnFocus: true });
       });
     }
@@ -3098,7 +3509,7 @@ window.SITE_DATA = ${serialized};
           sumber === "r2"
             ? {
                 id,
-                nama: `${nama} (R2)`,
+                nama,
                 sumber: "r2",
                 family: `CTCustom_${id.replace(/[^a-z0-9]/gi, "_")}`,
                 url: App.resolveR2FontUrl(rawVal),
@@ -3107,7 +3518,7 @@ window.SITE_DATA = ${serialized};
               }
             : {
                 id,
-                nama: `${nama} (Google)`,
+                nama,
                 sumber: "google",
                 family: rawVal,
                 kategori,
