@@ -143,8 +143,15 @@
     headerStudioBtn: document.getElementById("header-studio-btn"),
     studioShell: document.getElementById("studio-shell"),
     studioSidebar: document.getElementById("studio-sidebar"),
+    studioEditScroll: document.getElementById("studio-edit-scroll"),
     studioPreviewView: document.getElementById("studio-preview-view"),
     studioPanelBody: document.getElementById("studio-panel-body"),
+    floatingFontBar: document.getElementById("studio-floating-font-bar"),
+    floatingFontSelect: document.getElementById("studio-text-font-select"),
+    floatingSizeInput: document.getElementById("studio-text-size-input"),
+    floatingSizePreset: document.getElementById("studio-text-size-preset"),
+    btnApplyArabBlock: document.getElementById("btn-apply-arab-block"),
+    btnClearTextFont: document.getElementById("btn-clear-text-font"),
     studioPreviewFrame: document.getElementById("studio-preview-frame"),
     studioPreviewMount: document.getElementById("studio-preview-mount"),
     studioExitBtn: document.getElementById("studio-exit-btn"),
@@ -402,6 +409,7 @@ window.SITE_DATA = ${serialized};
     }
 
     if (isPreview) {
+      hideFloatingFontBar();
       if (studio.studioTab === "konten" && studio.contentType) {
         studio.previewActiveTab = studio.contentType;
       }
@@ -435,6 +443,8 @@ window.SITE_DATA = ${serialized};
   function renderStudioSidebar() {
     App.syncDynamicFonts(studio.draftData);
     studio.lastTextControl = null;
+    hideFloatingFontBar();
+    syncFloatingFontBarOptions();
 
     els.studioNavTabs.forEach((btn) => {
       const active = btn.dataset.studioTab === studio.studioTab;
@@ -464,65 +474,69 @@ window.SITE_DATA = ${serialized};
 
     const opt = (f) => `<option value="${App.escapeHtml(f.id)}">${App.escapeHtml(f.nama)}</option>`;
     return `
+      <option value="">Font Default Tema</option>
       ${r2Fonts.length ? `<optgroup label="Font Upload R2">${r2Fonts.map(opt).join("")}</optgroup>` : ""}
       ${googleArab.length ? `<optgroup label="Google Fonts — Arab / Qur'an / Hadis">${googleArab.map(opt).join("")}</optgroup>` : ""}
       ${googleLatin.length ? `<optgroup label="Google Fonts — Latin / Umum">${googleLatin.map(opt).join("")}</optgroup>` : ""}
     `;
   }
 
-  function renderRichTextFontToolbar(hint) {
-    return `
-      <div class="sticky top-0 z-10 p-3 rounded-xl border border-emerald-200/90 bg-emerald-50/90 backdrop-blur-xs space-y-2 shadow-xs">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[11px] font-semibold text-emerald-950">Pilih Font untuk Teks Tertentu</span>
-          <span id="studio-font-active-field" class="text-[10px] font-medium text-emerald-800 truncate">${App.escapeHtml(
-            hint || "Sorot teks di salah satu kolom"
-          )}</span>
-        </div>
-        <select id="studio-text-font-select" class="w-full px-2.5 py-1.5 text-xs bg-white border border-emerald-200 rounded-lg focus:outline-none focus:border-emerald-700">
-          ${buildFontSelectOptionsHtml()}
-        </select>
-        <div class="flex flex-wrap gap-1.5 text-[11px]">
-          <button
-            type="button"
-            id="btn-apply-selection-font"
-            class="flex-1 py-1.5 px-2.5 font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors whitespace-nowrap"
-            title="Terapkan font ke teks yang sedang Anda blok/sorot"
-          >
-            Terapkan ke Teks Terpilih
-          </button>
-          <button
-            type="button"
-            id="btn-apply-field-font"
-            class="py-1.5 px-2.5 font-medium text-emerald-900 bg-white hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors whitespace-nowrap"
-            title="Terapkan font ke seluruh isi kolom yang sedang dipilih"
-          >
-            Semua Kolom
-          </button>
-        </div>
-        <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <button
-            type="button"
-            id="btn-apply-arab-block"
-            class="py-1 px-2 font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors"
-            title="Bungkus sebagai blok kutipan Arab rata kanan dengan latar lembut"
-          >
-            + Blok Arab Rata Kanan
-          </button>
-          <button
-            type="button"
-            id="btn-clear-text-font"
-            class="ml-auto py-1 px-2 font-medium text-gray-600 bg-white hover:bg-stone-100 border border-stone-200 rounded-md transition-colors"
-            title="Hapus pilihan font khusus pada teks terpilih atau kolom aktif"
-          >
-            Hapus Font
-          </button>
-        </div>
-        <p class="text-[10px] text-emerald-900/80 leading-snug">
-          Teks Arab berdiri sendiri otomatis rata kanan; teks Arab yang terapit teks Latin tetap rata kiri secara rapi.
-        </p>
-      </div>
-    `;
+  function syncFloatingFontBarOptions() {
+    if (!els.floatingFontSelect) return;
+    const prev = els.floatingFontSelect.value;
+    els.floatingFontSelect.innerHTML = buildFontSelectOptionsHtml();
+    if (prev && Array.from(els.floatingFontSelect.options).some((o) => o.value === prev)) {
+      els.floatingFontSelect.value = prev;
+    }
+  }
+
+  function hideFloatingFontBar() {
+    if (studio.floatingBlurTimer) {
+      clearTimeout(studio.floatingBlurTimer);
+      studio.floatingBlurTimer = null;
+    }
+    if (!els.floatingFontBar) return;
+    els.floatingFontBar.classList.add("hidden");
+    els.floatingFontBar.classList.remove("flex");
+  }
+
+  function positionFloatingFontBar(targetEl) {
+    const bar = els.floatingFontBar;
+    if (!bar || !targetEl || !document.body.contains(targetEl)) {
+      hideFloatingFontBar();
+      return;
+    }
+    if (!studio.isOpen || studio.workspaceView !== "edit") {
+      hideFloatingFontBar();
+      return;
+    }
+
+    const rect = targetEl.getBoundingClientRect();
+    const scrollRect = els.studioEditScroll
+      ? els.studioEditScroll.getBoundingClientRect()
+      : { top: 56, bottom: window.innerHeight };
+
+    // Sembunyikan jika kotak teks tergulung ke luar viewport area edit
+    if (rect.bottom < scrollRect.top + 8 || rect.top > scrollRect.bottom - 8) {
+      bar.classList.add("hidden");
+      bar.classList.remove("flex");
+      return;
+    }
+
+    bar.classList.remove("hidden");
+    bar.classList.add("flex");
+
+    const barWidth = bar.offsetWidth || 340;
+    const barHeight = bar.offsetHeight || 34;
+
+    let top = rect.top - barHeight - 6;
+    if (top < Math.max(60, scrollRect.top + 4)) {
+      top = Math.min(rect.bottom + 6, window.innerHeight - barHeight - 8);
+    }
+
+    const left = Math.max(12, Math.min(rect.right - barWidth, window.innerWidth - barWidth - 12));
+    bar.style.top = `${Math.round(top)}px`;
+    bar.style.left = `${Math.round(left)}px`;
   }
 
   function renderTabTampilan() {
@@ -765,10 +779,8 @@ window.SITE_DATA = ${serialized};
     return `
       <div class="space-y-4">
         <p class="text-xs text-gray-500 leading-relaxed">
-          Edit teks beranda dengan leluasa di bawah ini, lalu klik tombol <strong>Lihat Pratinjau</strong> di atas untuk melihat tampilannya.
+          Klik kolom teks mana saja di bawah ini untuk memunculkan pilihan jenis dan ukuran font secara otomatis.
         </p>
-
-        ${renderRichTextFontToolbar("Sorot teks beranda untuk ganti font")}
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Website (Logo Teks)</label>
@@ -1195,8 +1207,6 @@ window.SITE_DATA = ${serialized};
           </button>
         </div>
 
-        ${renderRichTextFontToolbar("Klik / sorot teks di kolom lalu pilih font")}
-
         ${fieldsHtml}
 
         <div>
@@ -1468,6 +1478,7 @@ window.SITE_DATA = ${serialized};
   }
 
   function exitStudioWorkspace() {
+    hideFloatingFontBar();
     studio.isOpen = false;
     els.studioShell.classList.add("hidden");
     els.publicWrapper.classList.remove("hidden");
@@ -1905,133 +1916,393 @@ window.SITE_DATA = ${serialized};
       }
     });
 
-    // Lacak kolom & teks yang sedang diblok/dipilih untuk Toolbar Font Teks
+    // Toolbar Font & Ukuran Melayang Kontekstual (muncul di pojok kanan atas kotak teks aktif)
+    function parseTagRangeList(val) {
+      const text = String(val || "");
+      const re = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
+      const list = [];
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const openMatch = m[0].match(/^\[[^\]]+\]/);
+        const openLen = openMatch ? openMatch[0].length : 0;
+        const closeLen = m[1].length + 3; // [/font] or [/arab]
+        list.push({
+          type: m[1].toLowerCase(),
+          fontId: (m[2] || "").toLowerCase(),
+          size: m[3] ? parseInt(m[3], 10) : 0,
+          fullStart: m.index,
+          fullEnd: re.lastIndex,
+          openEnd: m.index + openLen,
+          closeStart: re.lastIndex - closeLen,
+          inner: m[4] || "",
+        });
+      }
+      return list;
+    }
+
+    function findEnclosingTag(val, pos) {
+      const tags = parseTagRangeList(val);
+      return tags.find((t) => pos >= t.openEnd && pos <= t.closeStart) || null;
+    }
+
+    function findWholeFieldTag(val) {
+      const m = String(val || "").match(
+        /^\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*)\[\/\1\]$/i
+      );
+      if (!m) return null;
+      const openMatch = m[0].match(/^\[[^\]]+\]/);
+      const openLen = openMatch ? openMatch[0].length : 0;
+      const closeLen = m[1].length + 3;
+      return {
+        type: m[1].toLowerCase(),
+        fontId: (m[2] || "").toLowerCase(),
+        size: m[3] ? parseInt(m[3], 10) : 0,
+        fullStart: 0,
+        fullEnd: String(val).length,
+        openEnd: openLen,
+        closeStart: String(val).length - closeLen,
+        inner: m[4] || "",
+      };
+    }
+
+    function buildOpenTag(type, fontId, size) {
+      const cleanFont = String(fontId || "").trim().toLowerCase();
+      const cleanSize = size >= 10 && size <= 72 ? size : 0;
+      if (type === "arab") {
+        return `[arab${cleanFont ? `=${cleanFont}` : ""}${cleanSize ? ` size=${cleanSize}` : ""}]`;
+      }
+      if (!cleanFont && !cleanSize) return "";
+      return `[font${cleanFont ? `=${cleanFont}` : ""}${cleanSize ? ` size=${cleanSize}` : ""}]`;
+    }
+
+    function syncFloatingBarControlsFromTarget(target, start, end) {
+      if (!els.floatingFontSelect || !els.floatingSizeInput) return;
+      const val = String(target.value || "");
+      let detected = null;
+
+      if (end > start) {
+        const selected = val.slice(start, end);
+        detected = findWholeFieldTag(selected) || findEnclosingTag(val, start);
+      } else {
+        detected = findEnclosingTag(val, start) || (target.name !== "isi" ? findWholeFieldTag(val) : null);
+      }
+
+      const fontVal = detected ? detected.fontId || "" : "";
+      const sizeVal = detected && detected.size >= 10 && detected.size <= 72 ? String(detected.size) : "";
+
+      if (Array.from(els.floatingFontSelect.options).some((o) => o.value === fontVal)) {
+        els.floatingFontSelect.value = fontVal;
+      } else {
+        els.floatingFontSelect.value = "";
+      }
+      els.floatingSizeInput.value = sizeVal;
+      if (els.floatingSizePreset) {
+        els.floatingSizePreset.value = Array.from(els.floatingSizePreset.options).some((o) => o.value === sizeVal)
+          ? sizeVal
+          : "";
+      }
+    }
+
     function trackActiveTextSelection(target) {
       if (!target || !["INPUT", "TEXTAREA"].includes(target.tagName)) return;
-      if (target.tagName === "INPUT" && target.type && !["text", "search", ""].includes(target.type)) return;
-      if (target.id && target.id.startsWith("cfg-")) return;
-      studio.lastTextControl = {
-        el: target,
-        start: typeof target.selectionStart === "number" ? target.selectionStart : 0,
-        end: typeof target.selectionEnd === "number" ? target.selectionEnd : 0,
-      };
-      const badge = document.getElementById("studio-font-active-field");
-      if (badge) {
-        const lbl = target.dataset.fieldLabel || target.name || "Kolom teks";
-        const selLen = Math.abs((studio.lastTextControl.end || 0) - (studio.lastTextControl.start || 0));
-        badge.textContent = selLen > 0 ? `${lbl} (${selLen} huruf dipilih)` : `Kolom: ${lbl}`;
+      if (!target.hasAttribute("data-field-label")) return;
+      if (studio.floatingBlurTimer) {
+        clearTimeout(studio.floatingBlurTimer);
+        studio.floatingBlurTimer = null;
       }
+
+      const start = typeof target.selectionStart === "number" ? target.selectionStart : 0;
+      const end = typeof target.selectionEnd === "number" ? target.selectionEnd : 0;
+      studio.lastTextControl = { el: target, start, end };
+
+      syncFloatingFontBarOptions();
+      syncFloatingBarControlsFromTarget(target, start, end);
+      positionFloatingFontBar(target);
+    }
+
+    function scheduleFloatingBarHideCheck() {
+      if (studio.floatingBlurTimer) clearTimeout(studio.floatingBlurTimer);
+      studio.floatingBlurTimer = setTimeout(() => {
+        const active = document.activeElement;
+        const inField = Boolean(
+          active &&
+            active.hasAttribute &&
+            active.hasAttribute("data-field-label") &&
+            els.studioPanelBody &&
+            els.studioPanelBody.contains(active)
+        );
+        const inBar = Boolean(active && els.floatingFontBar && els.floatingFontBar.contains(active));
+        if (!inField && !inBar) {
+          hideFloatingFontBar();
+        }
+      }, 140);
     }
 
     ["focusin", "keyup", "mouseup", "select"].forEach((evtName) => {
       els.studioPanelBody.addEventListener(evtName, (e) => trackActiveTextSelection(e.target));
     });
 
+    els.studioPanelBody.addEventListener("focusout", scheduleFloatingBarHideCheck);
+
+    if (els.floatingFontBar) {
+      els.floatingFontBar.addEventListener("focusin", () => {
+        if (studio.floatingBlurTimer) {
+          clearTimeout(studio.floatingBlurTimer);
+          studio.floatingBlurTimer = null;
+        }
+      });
+      els.floatingFontBar.addEventListener("focusout", scheduleFloatingBarHideCheck);
+      els.floatingFontBar.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (studio.lastTextControl && studio.lastTextControl.el) {
+            studio.lastTextControl.el.focus();
+          }
+          hideFloatingFontBar();
+        }
+      });
+    }
+
+    if (els.studioEditScroll) {
+      els.studioEditScroll.addEventListener("scroll", () => {
+        if (
+          els.floatingFontBar &&
+          !els.floatingFontBar.classList.contains("hidden") &&
+          studio.lastTextControl &&
+          studio.lastTextControl.el
+        ) {
+          positionFloatingFontBar(studio.lastTextControl.el);
+        }
+      });
+    }
+
+    window.addEventListener("resize", () => {
+      if (
+        els.floatingFontBar &&
+        !els.floatingFontBar.classList.contains("hidden") &&
+        studio.lastTextControl &&
+        studio.lastTextControl.el
+      ) {
+        positionFloatingFontBar(studio.lastTextControl.el);
+      }
+    });
+
     function getTrackedTextTarget() {
       if (studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)) {
         return studio.lastTextControl;
       }
-      const fallback = els.studioPanelBody.querySelector("textarea[data-field-label], input[data-field-label]");
-      if (!fallback) return null;
-      return {
-        el: fallback,
-        start: fallback.selectionStart || 0,
-        end: fallback.selectionEnd || 0,
-      };
+      return null;
     }
 
-    function applyTagToTrackedTarget(mode) {
+    function applyFloatingStyle(mode, options) {
+      const opts = options || {};
+      const returnFocus = opts.returnFocus !== false;
       const targetInfo = getTrackedTextTarget();
-      const fontSelect = document.getElementById("studio-text-font-select");
-      if (!targetInfo || !fontSelect) return;
+      if (!targetInfo || !els.floatingFontSelect || !els.floatingSizeInput) return;
 
       const el = targetInfo.el;
-      const fontId = fontSelect.value;
+      const fontId = els.floatingFontSelect.value || "";
+      const rawSizeNum = parseInt(String(els.floatingSizeInput.value || "").replace(/[^0-9]/g, ""), 10);
+      const sizeVal = rawSizeNum >= 10 && rawSizeNum <= 72 ? rawSizeNum : 0;
+
       const val = String(el.value || "");
       let start = Math.min(targetInfo.start, val.length);
       let end = Math.min(targetInfo.end, val.length);
       if (end < start) [start, end] = [end, start];
 
+      let nextStart = start;
+      let nextEnd = end;
+
       if (mode === "clear") {
+        els.floatingFontSelect.value = "";
+        els.floatingSizeInput.value = "";
+        if (els.floatingSizePreset) els.floatingSizePreset.value = "";
+
         if (end > start) {
           const cleaned = App.stripRichTags(val.slice(start, end));
           el.value = val.slice(0, start) + cleaned + val.slice(end);
-          el.focus();
-          el.setSelectionRange(start, start + cleaned.length);
+          nextStart = start;
+          nextEnd = start + cleaned.length;
         } else {
-          const cleaned = App.stripRichTags(val);
-          el.value = cleaned;
-          el.focus();
+          const enclosing = findEnclosingTag(val, start);
+          if (enclosing) {
+            const relPos = Math.max(0, start - enclosing.openEnd);
+            el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
+            nextStart = enclosing.fullStart + Math.min(relPos, enclosing.inner.length);
+            nextEnd = nextStart;
+          } else {
+            el.value = App.stripRichTags(val);
+            nextStart = el.value.length;
+            nextEnd = nextStart;
+          }
         }
-      } else if (mode === "field") {
-        const cleanVal = val.replace(/^\[(font|arab)=[a-z0-9-]+\]([\s\S]*)\[\/\1\]$/i, "$2");
-        el.value = `[font=${fontId}]${cleanVal}[/font]`;
-        el.focus();
       } else if (mode === "arab-block") {
-        const tagOpen = `[arab=${fontId}]`;
+        const tagOpen = buildOpenTag("arab", fontId, sizeVal);
         const tagClose = "[/arab]";
         if (end > start) {
           const inner = App.stripRichTags(val.slice(start, end));
           const wrapped = `${tagOpen}${inner}${tagClose}`;
           el.value = val.slice(0, start) + wrapped + val.slice(end);
-          el.focus();
-          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + inner.length);
+          nextStart = start + tagOpen.length;
+          nextEnd = nextStart + inner.length;
         } else {
-          const sample = val.trim() ? "" : "اكتب النص العربي هنا";
-          if (!val.trim()) {
-            el.value = `${tagOpen}${sample}${tagClose}`;
-            el.focus();
-            el.setSelectionRange(tagOpen.length, tagOpen.length + sample.length);
+          const enclosing = findEnclosingTag(val, start);
+          if (enclosing) {
+            const relPos = Math.max(0, start - enclosing.openEnd);
+            const wrapped = `${tagOpen}${enclosing.inner}${tagClose}`;
+            el.value = val.slice(0, enclosing.fullStart) + wrapped + val.slice(enclosing.fullEnd);
+            nextStart = enclosing.fullStart + tagOpen.length + Math.min(relPos, enclosing.inner.length);
+            nextEnd = nextStart;
+          } else if (!val.trim() || el.name === "isi") {
+            const wrapped = `${tagOpen}${tagClose}`;
+            el.value = val.slice(0, start) + wrapped + val.slice(start);
+            nextStart = start + tagOpen.length;
+            nextEnd = nextStart;
           } else {
             const inner = App.stripRichTags(val);
             el.value = `${tagOpen}${inner}${tagClose}`;
-            el.focus();
+            nextStart = tagOpen.length;
+            nextEnd = tagOpen.length + inner.length;
           }
         }
       } else {
-        const tagOpen = `[font=${fontId}]`;
-        const tagClose = "[/font]";
+        // Mode "style": ubah jenis font &/atau ukuran font secara otomatis ke teks diblok atau kolom aktif
         if (end > start) {
-          const selectedText = val.slice(start, end).replace(/^\[font=[a-z0-9-]+\]([\s\S]*)\[\/font\]$/i, "$1");
-          const wrapped = `${tagOpen}${selectedText}${tagClose}`;
-          el.value = val.slice(0, start) + wrapped + val.slice(end);
-          el.focus();
-          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + selectedText.length);
+          const enclosing = findEnclosingTag(val, start);
+          const isExactInner = enclosing && start === enclosing.openEnd && end === enclosing.closeStart;
+          if (isExactInner) {
+            const nextOpen = buildOpenTag(enclosing.type, fontId, sizeVal);
+            if (!nextOpen) {
+              el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
+              nextStart = enclosing.fullStart;
+              nextEnd = enclosing.fullStart + enclosing.inner.length;
+            } else {
+              const nextClose = `[/${enclosing.type}]`;
+              el.value =
+                val.slice(0, enclosing.fullStart) +
+                nextOpen +
+                enclosing.inner +
+                nextClose +
+                val.slice(enclosing.fullEnd);
+              nextStart = enclosing.fullStart + nextOpen.length;
+              nextEnd = nextStart + enclosing.inner.length;
+            }
+          } else {
+            const inner = App.stripRichTags(val.slice(start, end));
+            const tagOpen = buildOpenTag("font", fontId, sizeVal);
+            if (!tagOpen) {
+              el.value = val.slice(0, start) + inner + val.slice(end);
+              nextStart = start;
+              nextEnd = start + inner.length;
+            } else {
+              el.value = val.slice(0, start) + tagOpen + inner + "[/font]" + val.slice(end);
+              nextStart = start + tagOpen.length;
+              nextEnd = nextStart + inner.length;
+            }
+          }
         } else {
-          const placeholder = "Teks di sini";
-          const wrapped = `${tagOpen}${placeholder}${tagClose}`;
-          el.value = val.slice(0, start) + wrapped + val.slice(start);
-          el.focus();
-          el.setSelectionRange(start + tagOpen.length, start + tagOpen.length + placeholder.length);
+          const enclosing = findEnclosingTag(val, start);
+          if (enclosing) {
+            const relPos = Math.max(0, start - enclosing.openEnd);
+            const nextOpen = buildOpenTag(enclosing.type, fontId, sizeVal);
+            if (!nextOpen) {
+              el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
+              nextStart = enclosing.fullStart + Math.min(relPos, enclosing.inner.length);
+              nextEnd = nextStart;
+            } else {
+              const nextClose = `[/${enclosing.type}]`;
+              el.value =
+                val.slice(0, enclosing.fullStart) +
+                nextOpen +
+                enclosing.inner +
+                nextClose +
+                val.slice(enclosing.fullEnd);
+              nextStart = enclosing.fullStart + nextOpen.length + Math.min(relPos, enclosing.inner.length);
+              nextEnd = nextStart;
+            }
+          } else if (!val.trim() || el.name === "isi") {
+            const tagOpen = buildOpenTag("font", fontId, sizeVal);
+            if (tagOpen) {
+              el.value = val.slice(0, start) + `${tagOpen}[/font]` + val.slice(start);
+              nextStart = start + tagOpen.length;
+              nextEnd = nextStart;
+            }
+          } else {
+            const whole = findWholeFieldTag(val);
+            const targetType = whole ? whole.type : "font";
+            const inner = whole ? whole.inner : App.stripRichTags(val);
+            const tagOpen = buildOpenTag(targetType, fontId, sizeVal);
+            if (!tagOpen) {
+              el.value = inner;
+              nextStart = el.value.length;
+              nextEnd = nextStart;
+            } else {
+              el.value = `${tagOpen}${inner}[/${targetType}]`;
+              nextStart = tagOpen.length;
+              nextEnd = tagOpen.length + inner.length;
+            }
+          }
         }
       }
 
-      studio.lastTextControl = {
-        el,
-        start: el.selectionStart || 0,
-        end: el.selectionEnd || 0,
-      };
+      studio.lastTextControl = { el, start: nextStart, end: nextEnd };
       el.dispatchEvent(new Event("input", { bubbles: true }));
+
+      if (returnFocus) {
+        el.focus();
+        try {
+          el.setSelectionRange(nextStart, nextEnd);
+        } catch (_err) {}
+        positionFloatingFontBar(el);
+      }
+    }
+
+    if (els.floatingFontSelect) {
+      els.floatingFontSelect.addEventListener("change", () => {
+        applyFloatingStyle("style", { returnFocus: true });
+      });
+    }
+
+    if (els.floatingSizePreset) {
+      els.floatingSizePreset.addEventListener("change", () => {
+        if (els.floatingSizeInput) {
+          els.floatingSizeInput.value = els.floatingSizePreset.value;
+        }
+        applyFloatingStyle("style", { returnFocus: true });
+      });
+    }
+
+    if (els.floatingSizeInput) {
+      els.floatingSizeInput.addEventListener("input", () => {
+        const cleaned = els.floatingSizeInput.value.replace(/[^0-9]/g, "").slice(0, 2);
+        if (els.floatingSizeInput.value !== cleaned) {
+          els.floatingSizeInput.value = cleaned;
+        }
+      });
+      els.floatingSizeInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applyFloatingStyle("style", { returnFocus: true });
+        }
+      });
+      els.floatingSizeInput.addEventListener("change", () => {
+        applyFloatingStyle("style", { returnFocus: false });
+      });
+    }
+
+    if (els.btnApplyArabBlock) {
+      els.btnApplyArabBlock.addEventListener("click", () => {
+        applyFloatingStyle("arab-block", { returnFocus: true });
+      });
+    }
+
+    if (els.btnClearTextFont) {
+      els.btnClearTextFont.addEventListener("click", () => {
+        applyFloatingStyle("clear", { returnFocus: true });
+      });
     }
 
     els.studioPanelBody.addEventListener("click", async (e) => {
-      // Toolbar Font Per-Teks
-      if (e.target.closest("#btn-apply-selection-font")) {
-        applyTagToTrackedTarget("selection");
-        return;
-      }
-      if (e.target.closest("#btn-apply-field-font")) {
-        applyTagToTrackedTarget("field");
-        return;
-      }
-      if (e.target.closest("#btn-apply-arab-block")) {
-        applyTagToTrackedTarget("arab-block");
-        return;
-      }
-      if (e.target.closest("#btn-clear-text-font")) {
-        applyTagToTrackedTarget("clear");
-        return;
-      }
 
       // Tambah / Hapus Koleksi Font Kustom (R2 / Google Fonts)
       if (e.target.closest("#btn-add-custom-font")) {

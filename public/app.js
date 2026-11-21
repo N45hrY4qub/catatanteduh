@@ -289,14 +289,14 @@
 
   function stripRichTags(str) {
     return String(str || "")
-      .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?\]/gi, "")
+      .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\]/gi, "")
       .replace(/\[\/(?:font|arab)\]/gi, "");
   }
 
   function detectTextDirection(rawText) {
     const trimmed = String(rawText || "").trim();
     if (!trimmed) return "ltr";
-    if (/^\[arab(?:=[a-z0-9-]+)?\][\s\S]*\[\/arab\]$/i.test(trimmed)) return "rtl";
+    if (/^\[arab(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\][\s\S]*\[\/arab\]$/i.test(trimmed)) return "rtl";
 
     const plain = stripRichTags(trimmed);
     const arabicMatches = plain.match(ARABIC_CHAR_GLOBAL_RE) || [];
@@ -332,7 +332,7 @@
 
     const fonts = getFontCollection(siteData || state.currentData || window.SITE_DATA || {});
     const fontMap = new Map(fonts.map((f) => [f.id, f]));
-    const tagRegex = /\[(font|arab)(?:=([a-z0-9-]+))?\]([\s\S]*?)\[\/\1\]/gi;
+    const tagRegex = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
 
     let result = "";
     let lastIndex = 0;
@@ -346,26 +346,37 @@
 
       const tagType = match[1].toLowerCase();
       const fontId = (match[2] || "").toLowerCase();
-      const innerRaw = match[3] || "";
+      const rawSize = match[3] ? parseInt(match[3], 10) : 0;
+      const fontSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
+      const innerRaw = match[4] || "";
       const fontObj = fontId ? fontMap.get(fontId) : null;
       const plainInner = stripRichTags(innerRaw);
       const hasArabic = ARABIC_CHAR_RE.test(plainInner);
 
       const safeFam = fontObj ? String(fontObj.family).replace(/["\\']/g, "") : "";
       const fallback = fontObj && fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
-      const fontStyle = safeFam ? `font-family: '${safeFam}', ${fallback};` : "";
+      const styleParts = [];
+      if (safeFam) {
+        styleParts.push(`font-family: '${safeFam}', ${fallback};`);
+      }
+      if (fontSize) {
+        styleParts.push(
+          `font-size: ${fontSize}px; line-height: ${tagType === "arab" || hasArabic ? "1.95" : "1.45"};`
+        );
+      }
+      const inlineStyle = styleParts.join(" ");
 
       if (tagType === "arab") {
         const innerHtml = formatRichInlineHtml(innerRaw, siteData);
         result += `<span lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}"${
-          fontStyle ? ` style="${fontStyle}"` : ""
+          inlineStyle ? ` style="${inlineStyle}"` : ""
         }>${innerHtml}</span>`;
       } else {
-        const innerHtml = wrapArabicRunsInEscaped(escapeHtml(innerRaw));
-        if (fontObj) {
+        const innerHtml = formatRichInlineHtml(innerRaw, siteData);
+        if (fontObj || fontSize) {
           result += `<span${hasArabic ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
             hasArabic ? " ct-font-arab" : ""
-          }" style="${fontStyle}">${innerHtml}</span>`;
+          }" style="${inlineStyle}">${innerHtml}</span>`;
         } else {
           result += innerHtml;
         }
