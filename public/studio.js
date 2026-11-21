@@ -342,6 +342,7 @@ window.SITE_DATA = ${serialized};
       return studio.draftData;
     }
 
+    syncAllRichEditorsIn(form);
     const type = studio.contentType;
     const isNew = studio.editingItemId === "new";
     const id = isNew ? `preview-${type}` : studio.editingItemId;
@@ -537,6 +538,311 @@ window.SITE_DATA = ${serialized};
     const left = Math.max(12, Math.min(rect.right - barWidth, window.innerWidth - barWidth - 12));
     bar.style.top = `${Math.round(top)}px`;
     bar.style.left = `${Math.round(left)}px`;
+  }
+
+  // --------------------------------------------------------------------------
+  // Konversi WYSIWYG Editor <-> Tag [font]/[arab] (Tanpa Tampilkan Kode Tag)
+  // --------------------------------------------------------------------------
+  const ARABIC_CHAR_TEST_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+  function getFontMetaById(fontId) {
+    if (!fontId) return null;
+    const fonts = App.getFontCollection(studio.draftData || window.SITE_DATA || {});
+    return fonts.find((f) => f.id === String(fontId).toLowerCase()) || null;
+  }
+
+  function applyRtSpanVisualStyle(span, type, fontId, sizeVal) {
+    if (!span) return;
+    const cleanType = type === "arab" ? "arab" : "font";
+    const cleanFont = String(fontId || "").trim().toLowerCase();
+    const cleanSize = sizeVal >= 10 && sizeVal <= 72 ? sizeVal : 0;
+    const fontObj = getFontMetaById(cleanFont);
+
+    span.dataset.rtType = cleanType;
+    if (cleanFont) {
+      span.dataset.rtFont = cleanFont;
+    } else {
+      delete span.dataset.rtFont;
+    }
+    if (cleanSize) {
+      span.dataset.rtSize = String(cleanSize);
+    } else {
+      delete span.dataset.rtSize;
+    }
+
+    span.style.fontFamily = "";
+    span.style.fontSize = "";
+    span.style.lineHeight = "";
+
+    if (fontObj) {
+      const safeFam = String(fontObj.family).replace(/["\\']/g, "");
+      const fallback = fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      span.style.fontFamily = `'${safeFam}', ${fallback}`;
+    }
+    if (cleanSize) {
+      span.style.fontSize = `${cleanSize}px`;
+    }
+
+    const plainText = String(span.textContent || "").replace(/\u200B/g, "");
+    const hasArab = ARABIC_CHAR_TEST_RE.test(plainText);
+
+    if (cleanType === "arab") {
+      span.className = `ct-arab-block${fontObj ? " ct-font-arab" : ""}`;
+      span.setAttribute("lang", "ar");
+      span.setAttribute("dir", "rtl");
+      if (cleanSize) span.style.lineHeight = "2.0";
+    } else {
+      span.className = `bidi-isolate${hasArab ? " ct-font-arab" : ""}`;
+      if (hasArab) {
+        span.setAttribute("lang", "ar");
+        span.setAttribute("dir", "auto");
+      } else {
+        span.removeAttribute("lang");
+        span.removeAttribute("dir");
+      }
+      if (cleanSize) {
+        span.style.lineHeight = hasArab ? "1.95" : "1.45";
+      }
+    }
+  }
+
+  function buildRtSpanCssAttr(type, fontObj, cleanSize, hasArab) {
+    const parts = [];
+    if (fontObj) {
+      const safeFam = String(fontObj.family).replace(/["\\']/g, "");
+      const fallback = fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      parts.push(`font-family: '${safeFam}', ${fallback};`);
+    }
+    if (cleanSize) {
+      const lh = type === "arab" ? "2.0" : hasArab ? "1.95" : "1.45";
+      parts.push(`font-size: ${cleanSize}px; line-height: ${lh};`);
+    }
+    return parts.join(" ");
+  }
+
+  function richTextToEditorHtml(rawText, isMultiline) {
+    const input = String(rawText || "");
+    if (!input) return "";
+
+    function renderTokens(segment) {
+      const text = String(segment || "");
+      const re = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
+      let out = "";
+      let lastIdx = 0;
+      let m;
+
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > lastIdx) {
+          out += App.escapeHtml(text.slice(lastIdx, m.index));
+        }
+
+        const tagType = m[1].toLowerCase();
+        const fontId = (m[2] || "").toLowerCase();
+        const rawSize = m[3] ? parseInt(m[3], 10) : 0;
+        const cleanSize = rawSize >= 10 && rawSize <= 72 ? rawSize : 0;
+        const innerRaw = m[4] || "";
+        const fontObj = getFontMetaById(fontId);
+        const plainInner = App.stripRichTags(innerRaw);
+        const hasArab = ARABIC_CHAR_TEST_RE.test(plainInner);
+        const inlineStyle = buildRtSpanCssAttr(tagType, fontObj, cleanSize, hasArab);
+        const innerHtml = renderTokens(innerRaw);
+
+        const attrs = [
+          `data-rt-type="${tagType}"`,
+          fontId ? `data-rt-font="${App.escapeHtml(fontId)}"` : "",
+          cleanSize ? `data-rt-size="${cleanSize}"` : "",
+          inlineStyle ? `style="${inlineStyle}"` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        if (tagType === "arab") {
+          out += `<span ${attrs} lang="ar" dir="rtl" class="ct-arab-block${fontObj ? " ct-font-arab" : ""}">${innerHtml}</span>`;
+        } else if (fontObj || cleanSize) {
+          out += `<span ${attrs}${hasArab ? ' lang="ar" dir="auto"' : ""} class="bidi-isolate${
+            hasArab ? " ct-font-arab" : ""
+          }">${innerHtml}</span>`;
+        } else {
+          out += innerHtml;
+        }
+
+        lastIdx = re.lastIndex;
+      }
+
+      if (lastIdx < text.length) {
+        out += App.escapeHtml(text.slice(lastIdx));
+      }
+      return out;
+    }
+
+    if (!isMultiline) {
+      const single = input.replace(/\r?\n+/g, " ");
+      return single ? renderTokens(single) : "";
+    }
+
+    return input
+      .split(/\r?\n/)
+      .map((line) => {
+        const dir = App.detectTextDirection(line);
+        const cls = dir === "rtl" ? ' class="text-right leading-[2.0]"' : "";
+        const inner = line ? renderTokens(line) : "<br>";
+        return `<div dir="${dir}"${cls}>${inner}</div>`;
+      })
+      .join("");
+  }
+
+  function serializeInlineNodeToRichText(node) {
+    if (!node) return "";
+    if (node.nodeType === Node.TEXT_NODE) {
+      return String(node.nodeValue || "").replace(/\u200B/g, "").replace(/\u00A0/g, " ");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    if (node.tagName === "BR") return "\n";
+
+    let inner = "";
+    const children = Array.from(node.childNodes);
+    children.forEach((child, idx) => {
+      if (child.nodeType === Node.ELEMENT_NODE && child.tagName === "BR" && idx === children.length - 1) {
+        return;
+      }
+      inner += serializeInlineNodeToRichText(child);
+    });
+
+    if (node.dataset && node.dataset.rtType) {
+      const type = node.dataset.rtType === "arab" ? "arab" : "font";
+      const fontId = (node.dataset.rtFont || "").trim().toLowerCase();
+      const size = parseInt(node.dataset.rtSize || "0", 10);
+      if (!inner) return "";
+      if (type === "font" && !fontId && !(size >= 10 && size <= 72)) return inner;
+      const open = `[${type}${fontId ? `=${fontId}` : ""}${size >= 10 && size <= 72 ? ` size=${size}` : ""}]`;
+      return `${open}${inner}[/${type}]`;
+    }
+
+    return inner;
+  }
+
+  function collectEditorLines(container) {
+    const lines = [];
+    let inlineBuf = "";
+
+    const flushInline = () => {
+      if (inlineBuf !== "") {
+        lines.push(...inlineBuf.split("\n"));
+        inlineBuf = "";
+      }
+    };
+
+    const children = Array.from(container.childNodes);
+    children.forEach((child, idx) => {
+      if (
+        child.nodeType === Node.ELEMENT_NODE &&
+        ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(child.tagName)
+      ) {
+        flushInline();
+        const subLines = collectEditorLines(child);
+        if (subLines.length) {
+          lines.push(...subLines);
+        } else {
+          lines.push("");
+        }
+        return;
+      }
+
+      if (child.nodeType === Node.ELEMENT_NODE && child.tagName === "BR") {
+        if (idx < children.length - 1) {
+          inlineBuf += "\n";
+        } else if (lines.length === 0 && inlineBuf === "") {
+          lines.push("");
+        }
+        return;
+      }
+
+      inlineBuf += serializeInlineNodeToRichText(child);
+    });
+
+    flushInline();
+    return lines;
+  }
+
+  function serializeEditorToRichText(editorEl, isMultiline) {
+    if (!editorEl) return "";
+    const lines = collectEditorLines(editorEl);
+    const joined = lines.join("\n");
+    if (!joined.trim()) return "";
+    if (!isMultiline) {
+      return joined.replace(/\r?\n+/g, " ");
+    }
+    return joined;
+  }
+
+  function updateEditorLineDirections(editorEl) {
+    if (!editorEl) return;
+    const isMultiline = editorEl.dataset.multiline === "true";
+    if (isMultiline) {
+      const blocks = Array.from(editorEl.children).filter((el) => ["DIV", "P"].includes(el.tagName));
+      blocks.forEach((blk) => {
+        const lineText = collectEditorLines(blk).join(" ");
+        const dir = App.detectTextDirection(lineText);
+        blk.setAttribute("dir", dir);
+        blk.classList.toggle("text-right", dir === "rtl");
+      });
+    }
+    const wholeText = serializeEditorToRichText(editorEl, isMultiline);
+    editorEl.setAttribute("dir", App.detectTextDirection(wholeText));
+  }
+
+  function syncEditorToBackingField(editorEl, emitInput) {
+    if (!editorEl) return "";
+    const isMultiline = editorEl.dataset.multiline === "true";
+    const serialized = serializeEditorToRichText(editorEl, isMultiline);
+    const backing = editorEl.dataset.backingId ? document.getElementById(editorEl.dataset.backingId) : null;
+    if (backing) {
+      backing.value = serialized;
+      if (emitInput) {
+        backing.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+    return serialized;
+  }
+
+  function syncAllRichEditorsIn(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('[data-rich-editor="true"]').forEach((ed) => {
+      syncEditorToBackingField(ed, false);
+    });
+  }
+
+  function renderRichTextFieldHtml(opts) {
+    const o = opts || {};
+    const fieldKey = o.name || o.profilField || "field";
+    const backingId = o.id || `rt-backing-${fieldKey}`;
+    const multiline = Boolean(o.multiline);
+    const rawVal = String(o.value || "");
+    const minHeight = o.minHeightClass || (multiline ? "min-h-[88px]" : "min-h-[40px]");
+    const extraCls = o.extraClass || "";
+
+    return `
+      <textarea
+        id="${App.escapeHtml(backingId)}"
+        class="hidden"
+        ${o.name ? `name="${App.escapeHtml(o.name)}"` : ""}
+        ${o.profilField ? `data-profil-field="${App.escapeHtml(o.profilField)}"` : ""}
+        ${o.required ? 'data-required="true"' : ""}
+      >${App.escapeHtml(rawVal)}</textarea>
+      <div
+        contenteditable="true"
+        spellcheck="false"
+        data-rich-editor="true"
+        data-backing-id="${App.escapeHtml(backingId)}"
+        data-field-label="${App.escapeHtml(o.label || "")}"
+        data-field-name="${App.escapeHtml(fieldKey)}"
+        data-multiline="${multiline ? "true" : "false"}"
+        data-placeholder="${App.escapeHtml(o.placeholder || o.label || "")}"
+        ${o.required ? 'data-editor-required="true"' : ""}
+        dir="${App.detectTextDirection(rawVal)}"
+        class="ct-rich-editor w-full px-3.5 py-2 border border-stone-200 focus:border-emerald-700 rounded-xl text-sm bg-white transition-colors ${minHeight} ${extraCls}"
+      >${richTextToEditorHtml(rawVal, multiline)}</div>
+    `;
   }
 
   function renderTabTampilan() {
@@ -784,31 +1090,54 @@ window.SITE_DATA = ${serialized};
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Website (Logo Teks)</label>
-          <input type="text" data-profil-field="namaWebsite" data-field-label="Nama Website" value="${App.escapeHtml(p.namaWebsite)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          ${renderRichTextFieldHtml({
+            profilField: "namaWebsite",
+            label: "Nama Website",
+            value: p.namaWebsite,
+            multiline: false,
+          })}
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Label Kecil Atas (Kicker)</label>
-          <input type="text" data-profil-field="kicker" data-field-label="Label Kecil Atas" value="${App.escapeHtml(p.kicker)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          ${renderRichTextFieldHtml({
+            profilField: "kicker",
+            label: "Label Kecil Atas",
+            value: p.kicker,
+            multiline: false,
+          })}
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Utama Beranda</label>
-          <textarea rows="2" dir="auto" data-profil-field="judulUtama" data-field-label="Judul Utama" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
-            p.judulUtama
-          )}</textarea>
+          ${renderRichTextFieldHtml({
+            profilField: "judulUtama",
+            label: "Judul Utama",
+            value: p.judulUtama,
+            multiline: true,
+            minHeightClass: "min-h-[68px]",
+          })}
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Subjudul / Tagline di Bawah Judul</label>
-          <input type="text" dir="auto" data-profil-field="subjudul" data-field-label="Subjudul" value="${App.escapeHtml(p.subjudul || "— ruang berbagi ilmu & nasihat kehidupan —")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700" />
+          ${renderRichTextFieldHtml({
+            profilField: "subjudul",
+            label: "Subjudul",
+            value: p.subjudul || "— ruang berbagi ilmu & nasihat kehidupan —",
+            multiline: false,
+          })}
         </div>
 
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Deskripsi Tujuan Berbagi Ilmu</label>
-          <textarea rows="4" dir="auto" data-profil-field="deskripsi" data-field-label="Deskripsi Beranda" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-emerald-700">${App.escapeHtml(
-            p.deskripsi
-          )}</textarea>
+          ${renderRichTextFieldHtml({
+            profilField: "deskripsi",
+            label: "Deskripsi Beranda",
+            value: p.deskripsi,
+            multiline: true,
+            minHeightClass: "min-h-[112px] leading-relaxed",
+          })}
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -1043,7 +1372,13 @@ window.SITE_DATA = ${serialized};
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Artikel</label>
-          <input name="judul" dir="auto" data-field-label="Judul Artikel" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderRichTextFieldHtml({
+            name: "judul",
+            label: "Judul Artikel",
+            value: existing?.judul || "",
+            multiline: false,
+            required: true,
+          })}
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -1061,18 +1396,38 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Singkat</label>
-          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan" rows="2" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "ringkasan",
+            label: "Ringkasan",
+            value: existing?.ringkasan || "",
+            multiline: true,
+            minHeightClass: "min-h-[68px]",
+            required: true,
+          })}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Isi Artikel Lengkap (pisahkan paragraf dengan Enter 2x)</label>
-          <textarea name="isi" dir="auto" data-field-label="Isi Artikel" rows="11" required class="w-full px-3.5 py-2.5 border border-stone-200 rounded-xl text-sm leading-relaxed">${App.escapeHtml(isiText)}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "isi",
+            label: "Isi Artikel",
+            value: isiText,
+            multiline: true,
+            minHeightClass: "min-h-[240px] leading-relaxed",
+            required: true,
+          })}
         </div>
       `;
     } else if (type === "ebook") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Ebook</label>
-          <input name="judul" dir="auto" data-field-label="Judul Ebook" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderRichTextFieldHtml({
+            name: "judul",
+            label: "Judul Ebook",
+            value: existing?.judul || "",
+            multiline: false,
+            required: true,
+          })}
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -1106,14 +1461,27 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Deskripsi Singkat</label>
-          <textarea name="deskripsi" dir="auto" data-field-label="Deskripsi Ebook" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.deskripsi || "")}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "deskripsi",
+            label: "Deskripsi Ebook",
+            value: existing?.deskripsi || "",
+            multiline: true,
+            minHeightClass: "min-h-[88px]",
+            required: true,
+          })}
         </div>
       `;
     } else if (type === "flyer") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Flyer Nasihat</label>
-          <input name="judul" dir="auto" data-field-label="Judul Flyer" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderRichTextFieldHtml({
+            name: "judul",
+            label: "Judul Flyer",
+            value: existing?.judul || "",
+            multiline: false,
+            required: true,
+          })}
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -1132,14 +1500,27 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Kutipan / Teks Nasihat</label>
-          <textarea name="nasihat" dir="auto" data-field-label="Teks Nasihat" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.nasihat || "")}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "nasihat",
+            label: "Teks Nasihat",
+            value: existing?.nasihat || "",
+            multiline: true,
+            minHeightClass: "min-h-[88px]",
+            required: true,
+          })}
         </div>
       `;
     } else if (type === "audio") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Audio Kajian / Siniar</label>
-          <input name="judul" dir="auto" data-field-label="Judul Audio" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderRichTextFieldHtml({
+            name: "judul",
+            label: "Judul Audio",
+            value: existing?.judul || "",
+            multiline: false,
+            required: true,
+          })}
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div>
@@ -1162,14 +1543,27 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Materi</label>
-          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan Audio" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "ringkasan",
+            label: "Ringkasan Audio",
+            value: existing?.ringkasan || "",
+            multiline: true,
+            minHeightClass: "min-h-[88px]",
+            required: true,
+          })}
         </div>
       `;
     } else if (type === "video") {
       fieldsHtml = `
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Video</label>
-          <input name="judul" dir="auto" data-field-label="Judul Video" required value="${App.escapeHtml(existing?.judul || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderRichTextFieldHtml({
+            name: "judul",
+            label: "Judul Video",
+            value: existing?.judul || "",
+            multiline: false,
+            required: true,
+          })}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Link YouTube atau ID Video (11 karakter)</label>
@@ -1191,7 +1585,14 @@ window.SITE_DATA = ${serialized};
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Materi</label>
-          <textarea name="ringkasan" dir="auto" data-field-label="Ringkasan Video" rows="3" required class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm">${App.escapeHtml(existing?.ringkasan || "")}</textarea>
+          ${renderRichTextFieldHtml({
+            name: "ringkasan",
+            label: "Ringkasan Video",
+            value: existing?.ringkasan || "",
+            multiline: true,
+            minHeightClass: "min-h-[88px]",
+            required: true,
+          })}
         </div>
       `;
     }
@@ -1206,6 +1607,8 @@ window.SITE_DATA = ${serialized};
             &larr; Kembali
           </button>
         </div>
+
+        <p id="studio-item-form-error" class="hidden p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700"></p>
 
         ${fieldsHtml}
 
@@ -1787,6 +2190,16 @@ window.SITE_DATA = ${serialized};
 
     // Delegasi Input & Klik pada Sidebar Editor Kiri
     els.studioPanelBody.addEventListener("input", (e) => {
+      const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
+      if (richEditor) {
+        if (!richEditor.textContent.replace(/\u200B/g, "").trim() && richEditor.querySelector("br, div, p") && !richEditor.querySelector("[data-rt-type]")) {
+          richEditor.innerHTML = "";
+        }
+        updateEditorLineDirections(richEditor);
+        syncEditorToBackingField(richEditor, true);
+        return;
+      }
+
       const profilField = e.target.dataset.profilField;
       if (profilField) {
         studio.draftData.profil[profilField] = e.target.value;
@@ -1801,6 +2214,38 @@ window.SITE_DATA = ${serialized};
         saveDraftToLocal();
         renderLivePreview();
       }
+    });
+
+    els.studioPanelBody.addEventListener("keydown", (e) => {
+      const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
+      if (richEditor && e.key === "Enter" && richEditor.dataset.multiline !== "true") {
+        e.preventDefault();
+      }
+    });
+
+    els.studioPanelBody.addEventListener("paste", (e) => {
+      const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
+      if (!richEditor) return;
+      e.preventDefault();
+      const rawPaste = (e.clipboardData || window.clipboardData).getData("text/plain") || "";
+      const pasteText =
+        richEditor.dataset.multiline === "true" ? rawPaste : rawPaste.replace(/\r?\n+/g, " ");
+
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && richEditor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const tn = document.createTextNode(pasteText);
+        range.insertNode(tn);
+        range.setStartAfter(tn);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        richEditor.appendChild(document.createTextNode(pasteText));
+      }
+      updateEditorLineDirections(richEditor);
+      syncEditorToBackingField(richEditor, true);
     });
 
     els.studioPanelBody.addEventListener("change", async (e) => {
@@ -1916,79 +2361,60 @@ window.SITE_DATA = ${serialized};
       }
     });
 
-    // Toolbar Font & Ukuran Melayang Kontekstual (muncul di pojok kanan atas kotak teks aktif)
-    function parseTagRangeList(val) {
-      const text = String(val || "");
-      const re = /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]/gi;
-      const list = [];
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        const openMatch = m[0].match(/^\[[^\]]+\]/);
-        const openLen = openMatch ? openMatch[0].length : 0;
-        const closeLen = m[1].length + 3; // [/font] or [/arab]
-        list.push({
-          type: m[1].toLowerCase(),
-          fontId: (m[2] || "").toLowerCase(),
-          size: m[3] ? parseInt(m[3], 10) : 0,
-          fullStart: m.index,
-          fullEnd: re.lastIndex,
-          openEnd: m.index + openLen,
-          closeStart: re.lastIndex - closeLen,
-          inner: m[4] || "",
-        });
+    // Toolbar Font & Ukuran Melayang Kontekstual (WYSIWYG — langsung ubah font & ukuran teks tanpa kode tag)
+    function findEnclosingRtSpan(node, rootEl) {
+      let cur = node;
+      while (cur && cur !== rootEl) {
+        if (cur.nodeType === Node.ELEMENT_NODE && cur.dataset && cur.dataset.rtType) {
+          return cur;
+        }
+        cur = cur.parentNode;
       }
-      return list;
+      return null;
     }
 
-    function findEnclosingTag(val, pos) {
-      const tags = parseTagRangeList(val);
-      return tags.find((t) => pos >= t.openEnd && pos <= t.closeStart) || null;
-    }
-
-    function findWholeFieldTag(val) {
-      const m = String(val || "").match(
-        /^\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*)\[\/\1\]$/i
-      );
-      if (!m) return null;
-      const openMatch = m[0].match(/^\[[^\]]+\]/);
-      const openLen = openMatch ? openMatch[0].length : 0;
-      const closeLen = m[1].length + 3;
-      return {
-        type: m[1].toLowerCase(),
-        fontId: (m[2] || "").toLowerCase(),
-        size: m[3] ? parseInt(m[3], 10) : 0,
-        fullStart: 0,
-        fullEnd: String(val).length,
-        openEnd: openLen,
-        closeStart: String(val).length - closeLen,
-        inner: m[4] || "",
-      };
-    }
-
-    function buildOpenTag(type, fontId, size) {
-      const cleanFont = String(fontId || "").trim().toLowerCase();
-      const cleanSize = size >= 10 && size <= 72 ? size : 0;
-      if (type === "arab") {
-        return `[arab${cleanFont ? `=${cleanFont}` : ""}${cleanSize ? ` size=${cleanSize}` : ""}]`;
+    function unwrapDomNode(el) {
+      if (!el || !el.parentNode) return;
+      const parent = el.parentNode;
+      while (el.firstChild) {
+        parent.insertBefore(el.firstChild, el);
       }
-      if (!cleanFont && !cleanSize) return "";
-      return `[font${cleanFont ? `=${cleanFont}` : ""}${cleanSize ? ` size=${cleanSize}` : ""}]`;
+      parent.removeChild(el);
     }
 
-    function syncFloatingBarControlsFromTarget(target, start, end) {
+    function stripNestedRtSpans(containerNode) {
+      if (!containerNode || !containerNode.querySelectorAll) return;
+      Array.from(containerNode.querySelectorAll("[data-rt-type]")).forEach((sp) => {
+        unwrapDomNode(sp);
+      });
+    }
+
+    function getRichEditorFromNode(node) {
+      let cur = node;
+      while (cur && cur !== els.studioPanelBody) {
+        if (cur.nodeType === Node.ELEMENT_NODE && cur.dataset && cur.dataset.richEditor === "true") {
+          return cur;
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    }
+
+    function syncFloatingBarControlsFromEditor(editorEl, range) {
       if (!els.floatingFontSelect || !els.floatingSizeInput) return;
-      const val = String(target.value || "");
-      let detected = null;
-
-      if (end > start) {
-        const selected = val.slice(start, end);
-        detected = findWholeFieldTag(selected) || findEnclosingTag(val, start);
-      } else {
-        detected = findEnclosingTag(val, start) || (target.name !== "isi" ? findWholeFieldTag(val) : null);
+      let rtSpan = null;
+      if (range && editorEl.contains(range.startContainer)) {
+        rtSpan = findEnclosingRtSpan(range.startContainer, editorEl);
+      }
+      if (!rtSpan && editorEl.dataset.multiline !== "true") {
+        const directSpans = Array.from(editorEl.querySelectorAll(":scope > [data-rt-type]"));
+        if (directSpans.length === 1 && editorEl.textContent.trim() === directSpans[0].textContent.trim()) {
+          rtSpan = directSpans[0];
+        }
       }
 
-      const fontVal = detected ? detected.fontId || "" : "";
-      const sizeVal = detected && detected.size >= 10 && detected.size <= 72 ? String(detected.size) : "";
+      const fontVal = rtSpan ? rtSpan.dataset.rtFont || "" : "";
+      const sizeVal = rtSpan && rtSpan.dataset.rtSize ? String(rtSpan.dataset.rtSize) : "";
 
       if (Array.from(els.floatingFontSelect.options).some((o) => o.value === fontVal)) {
         els.floatingFontSelect.value = fontVal;
@@ -2003,34 +2429,35 @@ window.SITE_DATA = ${serialized};
       }
     }
 
-    function trackActiveTextSelection(target) {
-      if (!target || !["INPUT", "TEXTAREA"].includes(target.tagName)) return;
-      if (!target.hasAttribute("data-field-label")) return;
+    function trackActiveRichEditor(rawTarget) {
+      const editorEl = getRichEditorFromNode(rawTarget);
+      if (!editorEl) return;
       if (studio.floatingBlurTimer) {
         clearTimeout(studio.floatingBlurTimer);
         studio.floatingBlurTimer = null;
       }
 
-      const start = typeof target.selectionStart === "number" ? target.selectionStart : 0;
-      const end = typeof target.selectionEnd === "number" ? target.selectionEnd : 0;
-      studio.lastTextControl = { el: target, start, end };
+      const sel = window.getSelection();
+      let savedRange = null;
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        if (editorEl.contains(r.commonAncestorContainer)) {
+          savedRange = r.cloneRange();
+        }
+      }
 
+      studio.lastTextControl = { el: editorEl, range: savedRange };
       syncFloatingFontBarOptions();
-      syncFloatingBarControlsFromTarget(target, start, end);
-      positionFloatingFontBar(target);
+      syncFloatingBarControlsFromEditor(editorEl, savedRange);
+      positionFloatingFontBar(editorEl);
     }
 
     function scheduleFloatingBarHideCheck() {
       if (studio.floatingBlurTimer) clearTimeout(studio.floatingBlurTimer);
       studio.floatingBlurTimer = setTimeout(() => {
         const active = document.activeElement;
-        const inField = Boolean(
-          active &&
-            active.hasAttribute &&
-            active.hasAttribute("data-field-label") &&
-            els.studioPanelBody &&
-            els.studioPanelBody.contains(active)
-        );
+        const editorEl = getRichEditorFromNode(active);
+        const inField = Boolean(editorEl && els.studioPanelBody && els.studioPanelBody.contains(editorEl));
         const inBar = Boolean(active && els.floatingFontBar && els.floatingFontBar.contains(active));
         if (!inField && !inBar) {
           hideFloatingFontBar();
@@ -2038,8 +2465,23 @@ window.SITE_DATA = ${serialized};
       }, 140);
     }
 
-    ["focusin", "keyup", "mouseup", "select"].forEach((evtName) => {
-      els.studioPanelBody.addEventListener(evtName, (e) => trackActiveTextSelection(e.target));
+    ["focusin", "keyup", "mouseup"].forEach((evtName) => {
+      els.studioPanelBody.addEventListener(evtName, (e) => trackActiveRichEditor(e.target));
+    });
+
+    document.addEventListener("selectionchange", () => {
+      const active = document.activeElement;
+      const editorEl = getRichEditorFromNode(active);
+      if (!editorEl || !studio.isOpen || studio.workspaceView !== "edit") return;
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const r = sel.getRangeAt(0);
+        if (editorEl.contains(r.commonAncestorContainer)) {
+          const cloned = r.cloneRange();
+          studio.lastTextControl = { el: editorEl, range: cloned };
+          syncFloatingBarControlsFromEditor(editorEl, cloned);
+        }
+      }
     });
 
     els.studioPanelBody.addEventListener("focusout", scheduleFloatingBarHideCheck);
@@ -2087,173 +2529,183 @@ window.SITE_DATA = ${serialized};
       }
     });
 
-    function getTrackedTextTarget() {
-      if (studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)) {
-        return studio.lastTextControl;
+    function selectNodeContents(el, editorEl) {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
       }
-      return null;
+      studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+    }
+
+    function placeCaretInsideEnd(node, editorEl) {
+      const r = document.createRange();
+      if (node.firstChild && node.firstChild.nodeType === Node.TEXT_NODE) {
+        r.setStart(node.firstChild, node.firstChild.nodeValue.length);
+      } else {
+        r.selectNodeContents(node);
+        r.collapse(false);
+      }
+      r.collapse(true);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
     }
 
     function applyFloatingStyle(mode, options) {
       const opts = options || {};
       const returnFocus = opts.returnFocus !== false;
-      const targetInfo = getTrackedTextTarget();
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
       if (!targetInfo || !els.floatingFontSelect || !els.floatingSizeInput) return;
 
-      const el = targetInfo.el;
+      const editorEl = targetInfo.el;
       const fontId = els.floatingFontSelect.value || "";
       const rawSizeNum = parseInt(String(els.floatingSizeInput.value || "").replace(/[^0-9]/g, ""), 10);
       const sizeVal = rawSizeNum >= 10 && rawSizeNum <= 72 ? rawSizeNum : 0;
 
-      const val = String(el.value || "");
-      let start = Math.min(targetInfo.start, val.length);
-      let end = Math.min(targetInfo.end, val.length);
-      if (end < start) [start, end] = [end, start];
+      if (returnFocus) {
+        editorEl.focus();
+      }
 
-      let nextStart = start;
-      let nextEnd = end;
+      let range = targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
+        ? targetInfo.range.cloneRange()
+        : null;
+
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editorEl);
+        range.collapse(false);
+      }
 
       if (mode === "clear") {
         els.floatingFontSelect.value = "";
         els.floatingSizeInput.value = "";
         if (els.floatingSizePreset) els.floatingSizePreset.value = "";
 
-        if (end > start) {
-          const cleaned = App.stripRichTags(val.slice(start, end));
-          el.value = val.slice(0, start) + cleaned + val.slice(end);
-          nextStart = start;
-          nextEnd = start + cleaned.length;
-        } else {
-          const enclosing = findEnclosingTag(val, start);
-          if (enclosing) {
-            const relPos = Math.max(0, start - enclosing.openEnd);
-            el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
-            nextStart = enclosing.fullStart + Math.min(relPos, enclosing.inner.length);
-            nextEnd = nextStart;
+        const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
+        if (!range.collapsed) {
+          if (
+            enclosing &&
+            enclosing === findEnclosingRtSpan(range.endContainer, editorEl) &&
+            range.toString().replace(/\u200B/g, "") === String(enclosing.textContent || "").replace(/\u200B/g, "")
+          ) {
+            const tmp = document.createRange();
+            tmp.selectNode(enclosing);
+            unwrapDomNode(enclosing);
+            studio.lastTextControl = { el: editorEl, range: tmp.cloneRange() };
           } else {
-            el.value = App.stripRichTags(val);
-            nextStart = el.value.length;
-            nextEnd = nextStart;
+            const frag = range.extractContents();
+            stripNestedRtSpans(frag);
+            const markerStart = frag.firstChild;
+            const markerEnd = frag.lastChild;
+            range.insertNode(frag);
+            if (markerStart && markerEnd) {
+              const newR = document.createRange();
+              newR.setStartBefore(markerStart);
+              newR.setEndAfter(markerEnd);
+              const sel = window.getSelection();
+              if (sel && returnFocus) {
+                sel.removeAllRanges();
+                sel.addRange(newR);
+              }
+              studio.lastTextControl = { el: editorEl, range: newR.cloneRange() };
+            }
           }
-        }
-      } else if (mode === "arab-block") {
-        const tagOpen = buildOpenTag("arab", fontId, sizeVal);
-        const tagClose = "[/arab]";
-        if (end > start) {
-          const inner = App.stripRichTags(val.slice(start, end));
-          const wrapped = `${tagOpen}${inner}${tagClose}`;
-          el.value = val.slice(0, start) + wrapped + val.slice(end);
-          nextStart = start + tagOpen.length;
-          nextEnd = nextStart + inner.length;
+        } else if (enclosing) {
+          unwrapDomNode(enclosing);
         } else {
-          const enclosing = findEnclosingTag(val, start);
-          if (enclosing) {
-            const relPos = Math.max(0, start - enclosing.openEnd);
-            const wrapped = `${tagOpen}${enclosing.inner}${tagClose}`;
-            el.value = val.slice(0, enclosing.fullStart) + wrapped + val.slice(enclosing.fullEnd);
-            nextStart = enclosing.fullStart + tagOpen.length + Math.min(relPos, enclosing.inner.length);
-            nextEnd = nextStart;
-          } else if (!val.trim() || el.name === "isi") {
-            const wrapped = `${tagOpen}${tagClose}`;
-            el.value = val.slice(0, start) + wrapped + val.slice(start);
-            nextStart = start + tagOpen.length;
-            nextEnd = nextStart;
-          } else {
-            const inner = App.stripRichTags(val);
-            el.value = `${tagOpen}${inner}${tagClose}`;
-            nextStart = tagOpen.length;
-            nextEnd = tagOpen.length + inner.length;
-          }
+          stripNestedRtSpans(editorEl);
         }
       } else {
-        // Mode "style": ubah jenis font &/atau ukuran font secara otomatis ke teks diblok atau kolom aktif
-        if (end > start) {
-          const enclosing = findEnclosingTag(val, start);
-          const isExactInner = enclosing && start === enclosing.openEnd && end === enclosing.closeStart;
-          if (isExactInner) {
-            const nextOpen = buildOpenTag(enclosing.type, fontId, sizeVal);
-            if (!nextOpen) {
-              el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
-              nextStart = enclosing.fullStart;
-              nextEnd = enclosing.fullStart + enclosing.inner.length;
+        const targetType = mode === "arab-block" ? "arab" : "font";
+        const plainEditorText = String(editorEl.textContent || "").replace(/\u200B/g, "").trim();
+
+        if (!range.collapsed) {
+          const startSpan = findEnclosingRtSpan(range.startContainer, editorEl);
+          const endSpan = findEnclosingRtSpan(range.endContainer, editorEl);
+          const selectedTxt = range.toString().replace(/\u200B/g, "");
+
+          if (
+            startSpan &&
+            startSpan === endSpan &&
+            selectedTxt === String(startSpan.textContent || "").replace(/\u200B/g, "")
+          ) {
+            const nextType = mode === "arab-block" ? "arab" : startSpan.dataset.rtType || "font";
+            if (nextType === "font" && !fontId && !sizeVal) {
+              unwrapDomNode(startSpan);
             } else {
-              const nextClose = `[/${enclosing.type}]`;
-              el.value =
-                val.slice(0, enclosing.fullStart) +
-                nextOpen +
-                enclosing.inner +
-                nextClose +
-                val.slice(enclosing.fullEnd);
-              nextStart = enclosing.fullStart + nextOpen.length;
-              nextEnd = nextStart + enclosing.inner.length;
+              applyRtSpanVisualStyle(startSpan, nextType, fontId, sizeVal);
+              if (returnFocus) selectNodeContents(startSpan, editorEl);
             }
           } else {
-            const inner = App.stripRichTags(val.slice(start, end));
-            const tagOpen = buildOpenTag("font", fontId, sizeVal);
-            if (!tagOpen) {
-              el.value = val.slice(0, start) + inner + val.slice(end);
-              nextStart = start;
-              nextEnd = start + inner.length;
+            const frag = range.extractContents();
+            stripNestedRtSpans(frag);
+            if (targetType === "font" && !fontId && !sizeVal) {
+              range.insertNode(frag);
             } else {
-              el.value = val.slice(0, start) + tagOpen + inner + "[/font]" + val.slice(end);
-              nextStart = start + tagOpen.length;
-              nextEnd = nextStart + inner.length;
+              const span = document.createElement("span");
+              span.appendChild(frag);
+              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+              range.insertNode(span);
+              if (returnFocus) selectNodeContents(span, editorEl);
             }
           }
         } else {
-          const enclosing = findEnclosingTag(val, start);
+          const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
           if (enclosing) {
-            const relPos = Math.max(0, start - enclosing.openEnd);
-            const nextOpen = buildOpenTag(enclosing.type, fontId, sizeVal);
-            if (!nextOpen) {
-              el.value = val.slice(0, enclosing.fullStart) + enclosing.inner + val.slice(enclosing.fullEnd);
-              nextStart = enclosing.fullStart + Math.min(relPos, enclosing.inner.length);
-              nextEnd = nextStart;
+            const nextType = mode === "arab-block" ? "arab" : enclosing.dataset.rtType || "font";
+            if (nextType === "font" && !fontId && !sizeVal) {
+              unwrapDomNode(enclosing);
             } else {
-              const nextClose = `[/${enclosing.type}]`;
-              el.value =
-                val.slice(0, enclosing.fullStart) +
-                nextOpen +
-                enclosing.inner +
-                nextClose +
-                val.slice(enclosing.fullEnd);
-              nextStart = enclosing.fullStart + nextOpen.length + Math.min(relPos, enclosing.inner.length);
-              nextEnd = nextStart;
+              applyRtSpanVisualStyle(enclosing, nextType, fontId, sizeVal);
+              if (returnFocus) placeCaretInsideEnd(enclosing, editorEl);
             }
-          } else if (!val.trim() || el.name === "isi") {
-            const tagOpen = buildOpenTag("font", fontId, sizeVal);
-            if (tagOpen) {
-              el.value = val.slice(0, start) + `${tagOpen}[/font]` + val.slice(start);
-              nextStart = start + tagOpen.length;
-              nextEnd = nextStart;
+          } else if (!plainEditorText) {
+            if (targetType === "arab" || fontId || sizeVal) {
+              editorEl.innerHTML = "";
+              const span = document.createElement("span");
+              span.textContent = "\u200B";
+              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+              editorEl.appendChild(span);
+              if (returnFocus) placeCaretInsideEnd(span, editorEl);
+            }
+          } else if (editorEl.dataset.multiline !== "true") {
+            // Kolom satu baris (Judul Artikel, Nama Website, Subjudul, dll): terapkan ke seluruh isi kolom
+            stripNestedRtSpans(editorEl);
+            if (targetType === "arab" || fontId || sizeVal) {
+              const span = document.createElement("span");
+              while (editorEl.firstChild) {
+                span.appendChild(editorEl.firstChild);
+              }
+              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+              editorEl.appendChild(span);
+              if (returnFocus) selectNodeContents(span, editorEl);
             }
           } else {
-            const whole = findWholeFieldTag(val);
-            const targetType = whole ? whole.type : "font";
-            const inner = whole ? whole.inner : App.stripRichTags(val);
-            const tagOpen = buildOpenTag(targetType, fontId, sizeVal);
-            if (!tagOpen) {
-              el.value = inner;
-              nextStart = el.value.length;
-              nextEnd = nextStart;
-            } else {
-              el.value = `${tagOpen}${inner}[/${targetType}]`;
-              nextStart = tagOpen.length;
-              nextEnd = tagOpen.length + inner.length;
+            // Kolom multi-baris (Deskripsi, Ringkasan, Isi Artikel) tanpa teks diblok: sisipkan span gaya di kursor
+            if (targetType === "arab" || fontId || sizeVal) {
+              const span = document.createElement("span");
+              span.textContent = "\u200B";
+              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+              range.insertNode(span);
+              if (returnFocus) placeCaretInsideEnd(span, editorEl);
             }
           }
         }
       }
 
-      studio.lastTextControl = { el, start: nextStart, end: nextEnd };
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-
+      updateEditorLineDirections(editorEl);
+      syncEditorToBackingField(editorEl, true);
       if (returnFocus) {
-        el.focus();
-        try {
-          el.setSelectionRange(nextStart, nextEnd);
-        } catch (_err) {}
-        positionFloatingFontBar(el);
+        positionFloatingFontBar(editorEl);
       }
     }
 
@@ -2683,6 +3135,30 @@ window.SITE_DATA = ${serialized};
     els.studioPanelBody.addEventListener("submit", (e) => {
       if (e.target.id !== "studio-item-form") return;
       e.preventDefault();
+      syncAllRichEditorsIn(e.target);
+
+      const errEl = document.getElementById("studio-item-form-error");
+      if (errEl) {
+        errEl.classList.add("hidden");
+        errEl.textContent = "";
+      }
+
+      const requiredEditors = Array.from(e.target.querySelectorAll('[data-editor-required="true"]'));
+      for (const ed of requiredEditors) {
+        const backing = ed.dataset.backingId ? document.getElementById(ed.dataset.backingId) : null;
+        const plain = App.stripRichTags(backing ? backing.value : ed.textContent || "").trim();
+        if (!plain) {
+          const label = ed.dataset.fieldLabel || "Kolom";
+          if (errEl) {
+            errEl.textContent = `Mohon isi kolom "${label}" terlebih dahulu.`;
+            errEl.classList.remove("hidden");
+          }
+          ed.focus();
+          ed.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+      }
+
       const formData = new FormData(e.target);
       const type = studio.contentType;
       const isNew = studio.editingItemId === "new";

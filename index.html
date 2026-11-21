@@ -196,6 +196,21 @@
         line-height: 2.05;
       }
 
+      /* Kotak Teks Visual (WYSIWYG) di Halaman Edit Studio */
+      .ct-rich-editor {
+        outline: none;
+        word-break: break-word;
+      }
+      .ct-rich-editor:empty::before {
+        content: attr(data-placeholder);
+        color: #9ca3af;
+        pointer-events: none;
+      }
+      .ct-rich-editor .ct-arab-block {
+        margin: 0.35rem 0;
+        padding: 0.55rem 0.9rem;
+      }
+
       @media (prefers-reduced-motion: reduce) {
         * {
           scroll-behavior: auto !important;
@@ -340,7 +355,7 @@
             <select
               id="studio-text-font-select"
               aria-label="Pilih jenis font"
-              class="h-8 pl-2.5 pr-6 text-xs font-medium text-gray-800 bg-white border-r border-stone-200 focus:outline-none focus:bg-emerald-50/40 max-w-[220px] truncate"
+              class="h-8 pl-2.5 pr-6 text-xs font-medium text-gray-800 bg-white border-r border-stone-200 focus:outline-none focus:bg-emerald-50/40 max-w-[235px] truncate"
             ></select>
             <div class="relative flex items-center border-r border-stone-200 bg-white">
               <input
@@ -350,7 +365,7 @@
                 placeholder="Default"
                 aria-label="Ukuran font (px)"
                 title="Ketik angka ukuran (10–72 px) lalu tekan Enter, atau pilih dari daftar"
-                class="h-8 w-16 pl-2 pr-5 text-xs font-medium text-center text-gray-800 bg-transparent focus:outline-none focus:bg-emerald-50/40"
+                class="h-8 w-20 pl-2 pr-5 text-xs font-medium text-center text-gray-800 bg-transparent focus:outline-none focus:bg-emerald-50/40"
               />
               <select
                 id="studio-text-size-preset"
