@@ -35,6 +35,9 @@
     hasUnsavedChanges: false,
     pendingConfirmAction: null,
     lastTextControl: null,
+    suppressEditorTrack: false,
+    interactingWithFloatingBar: false,
+    lastFontOptionsHtml: "",
     pendingUploads: [], // { repoPath, base64Content, name }
     draftData: null,
     github: loadGitHubConfig(),
@@ -484,8 +487,13 @@ window.SITE_DATA = ${serialized};
 
   function syncFloatingFontBarOptions() {
     if (!els.floatingFontSelect) return;
+    const nextHtml = buildFontSelectOptionsHtml();
+    if (studio.lastFontOptionsHtml === nextHtml && els.floatingFontSelect.options.length > 0) {
+      return;
+    }
     const prev = els.floatingFontSelect.value;
-    els.floatingFontSelect.innerHTML = buildFontSelectOptionsHtml();
+    els.floatingFontSelect.innerHTML = nextHtml;
+    studio.lastFontOptionsHtml = nextHtml;
     if (prev && Array.from(els.floatingFontSelect.options).some((o) => o.value === prev)) {
       els.floatingFontSelect.value = prev;
     }
@@ -576,7 +584,7 @@ window.SITE_DATA = ${serialized};
 
     if (fontObj) {
       const safeFam = String(fontObj.family).replace(/["\\']/g, "");
-      const fallback = fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      const fallback = fontObj.kategori === "arab" ? "'Amiri', serif" : "Georgia, serif";
       span.style.fontFamily = `'${safeFam}', ${fallback}`;
     }
     if (cleanSize) {
@@ -610,7 +618,7 @@ window.SITE_DATA = ${serialized};
     const parts = [];
     if (fontObj) {
       const safeFam = String(fontObj.family).replace(/["\\']/g, "");
-      const fallback = fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      const fallback = fontObj.kategori === "arab" ? "'Amiri', serif" : "Georgia, serif";
       parts.push(`font-family: '${safeFam}', ${fallback};`);
     }
     if (cleanSize) {
@@ -705,6 +713,15 @@ window.SITE_DATA = ${serialized};
       if (child.nodeType === Node.ELEMENT_NODE && child.tagName === "BR" && idx === children.length - 1) {
         return;
       }
+      if (
+        child.nodeType === Node.ELEMENT_NODE &&
+        ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(child.tagName) &&
+        idx > 0 &&
+        inner &&
+        !inner.endsWith("\n")
+      ) {
+        inner += "\n";
+      }
       inner += serializeInlineNodeToRichText(child);
     });
 
@@ -715,6 +732,12 @@ window.SITE_DATA = ${serialized};
       if (!inner) return "";
       if (type === "font" && !fontId && !(size >= 10 && size <= 72)) return inner;
       const open = `[${type}${fontId ? `=${fontId}` : ""}${size >= 10 && size <= 72 ? ` size=${size}` : ""}]`;
+      if (inner.includes("\n")) {
+        return inner
+          .split("\n")
+          .map((seg) => (seg ? `${open}${seg}[/${type}]` : ""))
+          .join("\n");
+      }
       return `${open}${inner}[/${type}]`;
     }
 
@@ -2400,11 +2423,54 @@ window.SITE_DATA = ${serialized};
       return null;
     }
 
+    function findEnclosingBlockLine(node, rootEl) {
+      let cur = node;
+      while (cur && cur !== rootEl) {
+        if (
+          cur.nodeType === Node.ELEMENT_NODE &&
+          cur.parentNode === rootEl &&
+          ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(cur.tagName)
+        ) {
+          return cur;
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    }
+
+    function getDirectLineBlocks(rootEl) {
+      return Array.from(rootEl.children).filter((el) =>
+        ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(el.tagName)
+      );
+    }
+
     function syncFloatingBarControlsFromEditor(editorEl, range) {
       if (!els.floatingFontSelect || !els.floatingSizeInput) return;
       let rtSpan = null;
       if (range && editorEl.contains(range.startContainer)) {
         rtSpan = findEnclosingRtSpan(range.startContainer, editorEl);
+        if (!rtSpan && !range.collapsed) {
+          const innerSpans = Array.from(editorEl.querySelectorAll("[data-rt-type]")).filter((sp) => {
+            try {
+              return range.intersectsNode(sp);
+            } catch (_e) {
+              return false;
+            }
+          });
+          if (innerSpans.length === 1) {
+            rtSpan = innerSpans[0];
+          }
+        }
+        if (!rtSpan && editorEl.dataset.multiline === "true") {
+          const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+          if (lineBlock) {
+            const directSpans = Array.from(lineBlock.querySelectorAll(":scope > [data-rt-type]"));
+            const lineTxt = String(lineBlock.textContent || "").replace(/\u200B/g, "").trim();
+            if (directSpans.length === 1 && lineTxt && lineTxt === String(directSpans[0].textContent || "").replace(/\u200B/g, "").trim()) {
+              rtSpan = directSpans[0];
+            }
+          }
+        }
       }
       if (!rtSpan && editorEl.dataset.multiline !== "true") {
         const directSpans = Array.from(editorEl.querySelectorAll(":scope > [data-rt-type]"));
@@ -2430,6 +2496,7 @@ window.SITE_DATA = ${serialized};
     }
 
     function trackActiveRichEditor(rawTarget) {
+      if (studio.suppressEditorTrack) return;
       const editorEl = getRichEditorFromNode(rawTarget);
       if (!editorEl) return;
       if (studio.floatingBlurTimer) {
@@ -2462,7 +2529,7 @@ window.SITE_DATA = ${serialized};
         if (!inField && !inBar) {
           hideFloatingFontBar();
         }
-      }, 140);
+      }, 160);
     }
 
     ["focusin", "keyup", "mouseup"].forEach((evtName) => {
@@ -2470,7 +2537,9 @@ window.SITE_DATA = ${serialized};
     });
 
     document.addEventListener("selectionchange", () => {
+      if (studio.suppressEditorTrack || studio.interactingWithFloatingBar) return;
       const active = document.activeElement;
+      if (els.floatingFontBar && els.floatingFontBar.contains(active)) return;
       const editorEl = getRichEditorFromNode(active);
       if (!editorEl || !studio.isOpen || studio.workspaceView !== "edit") return;
       const sel = window.getSelection();
@@ -2487,6 +2556,41 @@ window.SITE_DATA = ${serialized};
     els.studioPanelBody.addEventListener("focusout", scheduleFloatingBarHideCheck);
 
     if (els.floatingFontBar) {
+      const captureEditorRangeBeforeBarAction = () => {
+        if (!studio.lastTextControl || !studio.lastTextControl.el) return;
+        const ed = studio.lastTextControl.el;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const r = sel.getRangeAt(0);
+          if (ed.contains(r.commonAncestorContainer)) {
+            studio.lastTextControl = { el: ed, range: r.cloneRange() };
+          }
+        }
+      };
+
+      const releaseBarInteract = () => {
+        setTimeout(() => {
+          studio.interactingWithFloatingBar = false;
+        }, 0);
+      };
+
+      els.floatingFontBar.addEventListener("pointerdown", (e) => {
+        studio.interactingWithFloatingBar = true;
+        captureEditorRangeBeforeBarAction();
+        if (e.target.closest("button")) {
+          e.preventDefault();
+        }
+      });
+      els.floatingFontBar.addEventListener("mousedown", (e) => {
+        studio.interactingWithFloatingBar = true;
+        captureEditorRangeBeforeBarAction();
+        if (e.target.closest("button")) {
+          e.preventDefault();
+        }
+      });
+      window.addEventListener("pointerup", releaseBarInteract);
+      window.addEventListener("mouseup", releaseBarInteract);
+
       els.floatingFontBar.addEventListener("focusin", () => {
         if (studio.floatingBlurTimer) {
           clearTimeout(studio.floatingBlurTimer);
@@ -2529,18 +2633,21 @@ window.SITE_DATA = ${serialized};
       }
     });
 
-    function selectNodeContents(el, editorEl) {
+    function selectNodeContents(el, editorEl, restoreSelection) {
       const r = document.createRange();
       r.selectNodeContents(el);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
+      if (restoreSelection !== false) {
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(r);
+        }
       }
       studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+      return r;
     }
 
-    function placeCaretInsideEnd(node, editorEl) {
+    function placeCaretInsideEnd(node, editorEl, restoreSelection) {
       const r = document.createRange();
       if (node.firstChild && node.firstChild.nodeType === Node.TEXT_NODE) {
         r.setStart(node.firstChild, node.firstChild.nodeValue.length);
@@ -2549,12 +2656,58 @@ window.SITE_DATA = ${serialized};
         r.collapse(false);
       }
       r.collapse(true);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
+      if (restoreSelection !== false) {
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(r);
+        }
       }
       studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+      return r;
+    }
+
+    function trimTrailingZeroOffsetBlockBoundary(range, rootEl) {
+      if (!range || range.collapsed || range.endOffset !== 0) return;
+      const startBlock = findEnclosingBlockLine(range.startContainer, rootEl);
+      const endBlock =
+        range.endContainer === rootEl
+          ? null
+          : findEnclosingBlockLine(range.endContainer, rootEl) ||
+            (range.endContainer.parentNode === rootEl ? range.endContainer : null);
+      if (!startBlock || !endBlock || startBlock === endBlock) return;
+      // Triple-click di Chromium menaruh endContainer di (nextDiv, 0). Mundurkan ke akhir startBlock.
+      let lastNode = startBlock.lastChild;
+      while (lastNode && lastNode.nodeType === Node.ELEMENT_NODE && lastNode.tagName === "BR") {
+        lastNode = lastNode.previousSibling;
+      }
+      if (lastNode) {
+        range.setEndAfter(lastNode);
+      } else {
+        range.setEnd(startBlock, startBlock.childNodes.length);
+      }
+    }
+
+    function wrapBlockLineContents(lineEl, targetType, fontId, sizeVal) {
+      const children = Array.from(lineEl.childNodes);
+      const trailingBrs = [];
+      while (
+        children.length &&
+        children[children.length - 1].nodeType === Node.ELEMENT_NODE &&
+        children[children.length - 1].tagName === "BR"
+      ) {
+        trailingBrs.unshift(children.pop());
+      }
+
+      const span = document.createElement("span");
+      children.forEach((ch) => {
+        span.appendChild(ch);
+      });
+      stripNestedRtSpans(span);
+      applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+      lineEl.appendChild(span);
+      trailingBrs.forEach((br) => lineEl.appendChild(br));
+      return span;
     }
 
     function applyFloatingStyle(mode, options) {
@@ -2567,143 +2720,302 @@ window.SITE_DATA = ${serialized};
       if (!targetInfo || !els.floatingFontSelect || !els.floatingSizeInput) return;
 
       const editorEl = targetInfo.el;
-      const fontId = els.floatingFontSelect.value || "";
+      const fontId = mode === "clear" ? "" : els.floatingFontSelect.value || "";
       const rawSizeNum = parseInt(String(els.floatingSizeInput.value || "").replace(/[^0-9]/g, ""), 10);
-      const sizeVal = rawSizeNum >= 10 && rawSizeNum <= 72 ? rawSizeNum : 0;
+      const sizeVal = mode === "clear" ? 0 : rawSizeNum >= 10 && rawSizeNum <= 72 ? rawSizeNum : 0;
 
-      if (returnFocus) {
-        editorEl.focus();
+      // Ambil range terbaru (prioritaskan selection aktif jika masih di dalam editor)
+      let range = null;
+      const liveSel = window.getSelection();
+      if (liveSel && liveSel.rangeCount > 0) {
+        const liveR = liveSel.getRangeAt(0);
+        if (editorEl.contains(liveR.commonAncestorContainer)) {
+          range = liveR.cloneRange();
+        }
       }
-
-      let range = targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
-        ? targetInfo.range.cloneRange()
-        : null;
-
+      if (!range && targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)) {
+        range = targetInfo.range.cloneRange();
+      }
       if (!range) {
         range = document.createRange();
         range.selectNodeContents(editorEl);
         range.collapse(false);
       }
 
-      if (mode === "clear") {
-        els.floatingFontSelect.value = "";
-        els.floatingSizeInput.value = "";
-        if (els.floatingSizePreset) els.floatingSizePreset.value = "";
+      trimTrailingZeroOffsetBlockBoundary(range, editorEl);
 
-        const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
-        if (!range.collapsed) {
-          if (
-            enclosing &&
-            enclosing === findEnclosingRtSpan(range.endContainer, editorEl) &&
-            range.toString().replace(/\u200B/g, "") === String(enclosing.textContent || "").replace(/\u200B/g, "")
-          ) {
-            const tmp = document.createRange();
-            tmp.selectNode(enclosing);
-            unwrapDomNode(enclosing);
-            studio.lastTextControl = { el: editorEl, range: tmp.cloneRange() };
-          } else {
-            const frag = range.extractContents();
-            stripNestedRtSpans(frag);
-            const markerStart = frag.firstChild;
-            const markerEnd = frag.lastChild;
-            range.insertNode(frag);
-            if (markerStart && markerEnd) {
-              const newR = document.createRange();
-              newR.setStartBefore(markerStart);
-              newR.setEndAfter(markerEnd);
-              const sel = window.getSelection();
-              if (sel && returnFocus) {
-                sel.removeAllRanges();
-                sel.addRange(newR);
-              }
-              studio.lastTextControl = { el: editorEl, range: newR.cloneRange() };
-            }
-          }
-        } else if (enclosing) {
-          unwrapDomNode(enclosing);
-        } else {
-          stripNestedRtSpans(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        if (returnFocus) {
+          editorEl.focus({ preventScroll: true });
         }
-      } else {
-        const targetType = mode === "arab-block" ? "arab" : "font";
-        const plainEditorText = String(editorEl.textContent || "").replace(/\u200B/g, "").trim();
 
-        if (!range.collapsed) {
-          const startSpan = findEnclosingRtSpan(range.startContainer, editorEl);
-          const endSpan = findEnclosingRtSpan(range.endContainer, editorEl);
-          const selectedTxt = range.toString().replace(/\u200B/g, "");
+        if (mode === "clear") {
+          els.floatingFontSelect.value = "";
+          els.floatingSizeInput.value = "";
+          if (els.floatingSizePreset) els.floatingSizePreset.value = "";
 
-          if (
-            startSpan &&
-            startSpan === endSpan &&
-            selectedTxt === String(startSpan.textContent || "").replace(/\u200B/g, "")
-          ) {
-            const nextType = mode === "arab-block" ? "arab" : startSpan.dataset.rtType || "font";
-            if (nextType === "font" && !fontId && !sizeVal) {
-              unwrapDomNode(startSpan);
+          const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
+          if (!range.collapsed) {
+            const startBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+            const endBlock = findEnclosingBlockLine(range.endContainer, editorEl);
+
+            if (startBlock && endBlock && startBlock !== endBlock) {
+              const allBlocks = getDirectLineBlocks(editorEl);
+              allBlocks.forEach((blk) => {
+                if (range.intersectsNode(blk)) {
+                  stripNestedRtSpans(blk);
+                }
+              });
+            } else if (
+              enclosing &&
+              enclosing === findEnclosingRtSpan(range.endContainer, editorEl) &&
+              range.toString().replace(/\u200B/g, "") === String(enclosing.textContent || "").replace(/\u200B/g, "")
+            ) {
+              const tmp = document.createRange();
+              tmp.selectNodeContents(enclosing);
+              const parent = enclosing.parentNode;
+              const firstChild = enclosing.firstChild;
+              const lastChild = enclosing.lastChild;
+              unwrapDomNode(enclosing);
+              if (firstChild && lastChild && parent) {
+                const newR = document.createRange();
+                newR.setStartBefore(firstChild);
+                newR.setEndAfter(lastChild);
+                if (returnFocus && liveSel) {
+                  liveSel.removeAllRanges();
+                  liveSel.addRange(newR);
+                }
+                studio.lastTextControl = { el: editorEl, range: newR.cloneRange() };
+              }
             } else {
-              applyRtSpanVisualStyle(startSpan, nextType, fontId, sizeVal);
-              if (returnFocus) selectNodeContents(startSpan, editorEl);
+              const frag = range.extractContents();
+              stripNestedRtSpans(frag);
+              const markerStart = frag.firstChild;
+              const markerEnd = frag.lastChild;
+              range.insertNode(frag);
+              if (markerStart && markerEnd) {
+                const newR = document.createRange();
+                newR.setStartBefore(markerStart);
+                newR.setEndAfter(markerEnd);
+                const sel = window.getSelection();
+                if (sel && returnFocus) {
+                  sel.removeAllRanges();
+                  sel.addRange(newR);
+                }
+                studio.lastTextControl = { el: editorEl, range: newR.cloneRange() };
+              }
+            }
+          } else if (enclosing) {
+            const firstChild = enclosing.firstChild;
+            unwrapDomNode(enclosing);
+            if (firstChild) {
+              placeCaretInsideEnd(firstChild.nodeType === Node.TEXT_NODE ? firstChild.parentNode || editorEl : firstChild, editorEl, returnFocus);
+            }
+          } else if (editorEl.dataset.multiline === "true") {
+            const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+            if (lineBlock) {
+              stripNestedRtSpans(lineBlock);
+            } else {
+              stripNestedRtSpans(editorEl);
             }
           } else {
-            const frag = range.extractContents();
-            stripNestedRtSpans(frag);
-            if (targetType === "font" && !fontId && !sizeVal) {
-              range.insertNode(frag);
-            } else {
-              const span = document.createElement("span");
-              span.appendChild(frag);
-              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
-              range.insertNode(span);
-              if (returnFocus) selectNodeContents(span, editorEl);
-            }
+            stripNestedRtSpans(editorEl);
           }
         } else {
-          const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
-          if (enclosing) {
-            const nextType = mode === "arab-block" ? "arab" : enclosing.dataset.rtType || "font";
-            if (nextType === "font" && !fontId && !sizeVal) {
-              unwrapDomNode(enclosing);
-            } else {
-              applyRtSpanVisualStyle(enclosing, nextType, fontId, sizeVal);
-              if (returnFocus) placeCaretInsideEnd(enclosing, editorEl);
-            }
-          } else if (!plainEditorText) {
-            if (targetType === "arab" || fontId || sizeVal) {
-              editorEl.innerHTML = "";
-              const span = document.createElement("span");
-              span.textContent = "\u200B";
-              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
-              editorEl.appendChild(span);
-              if (returnFocus) placeCaretInsideEnd(span, editorEl);
-            }
-          } else if (editorEl.dataset.multiline !== "true") {
-            // Kolom satu baris (Judul Artikel, Nama Website, Subjudul, dll): terapkan ke seluruh isi kolom
-            stripNestedRtSpans(editorEl);
-            if (targetType === "arab" || fontId || sizeVal) {
-              const span = document.createElement("span");
-              while (editorEl.firstChild) {
-                span.appendChild(editorEl.firstChild);
+          const targetType = mode === "arab-block" ? "arab" : "font";
+          const plainEditorText = String(editorEl.textContent || "").replace(/\u200B/g, "").trim();
+
+          if (!range.collapsed) {
+            const startBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+            const endBlock = findEnclosingBlockLine(range.endContainer, editorEl);
+
+            if (editorEl.dataset.multiline === "true" && startBlock && endBlock && startBlock !== endBlock) {
+              // Seleksi melintasi beberapa baris <div>: bungkus konten di dalam tiap baris agar struktur <div> tidak rusak
+              const blocks = getDirectLineBlocks(editorEl);
+              let firstStyledSpan = null;
+              let lastStyledSpan = null;
+              blocks.forEach((blk) => {
+                let hits = false;
+                try {
+                  hits = range.intersectsNode(blk);
+                } catch (_e) {
+                  hits = false;
+                }
+                if (!hits) return;
+                const blkText = String(blk.textContent || "").replace(/\u200B/g, "").trim();
+                if (!blkText) return;
+                if (targetType === "font" && !fontId && !sizeVal) {
+                  stripNestedRtSpans(blk);
+                } else {
+                  const sp = wrapBlockLineContents(blk, targetType, fontId, sizeVal);
+                  if (!firstStyledSpan) firstStyledSpan = sp;
+                  lastStyledSpan = sp;
+                }
+              });
+              if (firstStyledSpan && lastStyledSpan) {
+                const rAll = document.createRange();
+                rAll.setStartBefore(firstStyledSpan);
+                rAll.setEndAfter(lastStyledSpan);
+                if (returnFocus && liveSel) {
+                  liveSel.removeAllRanges();
+                  liveSel.addRange(rAll);
+                }
+                studio.lastTextControl = { el: editorEl, range: rAll.cloneRange() };
               }
-              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
-              editorEl.appendChild(span);
-              if (returnFocus) selectNodeContents(span, editorEl);
+            } else {
+              const startSpan = findEnclosingRtSpan(range.startContainer, editorEl);
+              const endSpan = findEnclosingRtSpan(range.endContainer, editorEl);
+              const selectedTxt = range.toString().replace(/\u200B/g, "");
+
+              if (
+                startSpan &&
+                startSpan === endSpan &&
+                selectedTxt === String(startSpan.textContent || "").replace(/\u200B/g, "")
+              ) {
+                const nextType = mode === "arab-block" ? "arab" : startSpan.dataset.rtType || "font";
+                if (nextType === "font" && !fontId && !sizeVal) {
+                  unwrapDomNode(startSpan);
+                } else {
+                  applyRtSpanVisualStyle(startSpan, nextType, fontId, sizeVal);
+                  selectNodeContents(startSpan, editorEl, returnFocus);
+                }
+              } else {
+                const frag = range.extractContents();
+                stripNestedRtSpans(frag);
+                if (targetType === "font" && !fontId && !sizeVal) {
+                  range.insertNode(frag);
+                } else {
+                  const span = document.createElement("span");
+                  span.appendChild(frag);
+                  applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                  range.insertNode(span);
+                  selectNodeContents(span, editorEl, returnFocus);
+                }
+              }
             }
           } else {
-            // Kolom multi-baris (Deskripsi, Ringkasan, Isi Artikel) tanpa teks diblok: sisipkan span gaya di kursor
-            if (targetType === "arab" || fontId || sizeVal) {
-              const span = document.createElement("span");
-              span.textContent = "\u200B";
-              applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
-              range.insertNode(span);
-              if (returnFocus) placeCaretInsideEnd(span, editorEl);
+            const enclosing = findEnclosingRtSpan(range.startContainer, editorEl);
+            if (enclosing) {
+              const nextType = mode === "arab-block" ? "arab" : enclosing.dataset.rtType || "font";
+              if (nextType === "font" && !fontId && !sizeVal) {
+                unwrapDomNode(enclosing);
+              } else {
+                applyRtSpanVisualStyle(enclosing, nextType, fontId, sizeVal);
+                placeCaretInsideEnd(enclosing, editorEl, returnFocus);
+              }
+            } else if (!plainEditorText) {
+              if (targetType === "arab" || fontId || sizeVal) {
+                editorEl.innerHTML = "";
+                const span = document.createElement("span");
+                span.textContent = "\u200B";
+                applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                editorEl.appendChild(span);
+                placeCaretInsideEnd(span, editorEl, returnFocus);
+              }
+            } else if (editorEl.dataset.multiline !== "true") {
+              // Kolom satu baris (Judul Artikel, Nama Website, Subjudul, dll): terapkan ke seluruh isi kolom
+              stripNestedRtSpans(editorEl);
+              if (targetType === "arab" || fontId || sizeVal) {
+                const span = document.createElement("span");
+                while (editorEl.firstChild) {
+                  span.appendChild(editorEl.firstChild);
+                }
+                applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                editorEl.appendChild(span);
+                selectNodeContents(span, editorEl, returnFocus);
+              }
+            } else {
+              // Kolom multi-baris (Deskripsi, Ringkasan, Isi Artikel) dengan kursor di dalam baris tanpa seleksi:
+              // Jika baris aktif berisi teks polos (belum ada span parsial), langsung terapkan ke baris tersebut!
+              const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+              if (lineBlock) {
+                const lineText = String(lineBlock.textContent || "").replace(/\u200B/g, "").trim();
+                const hasExistingSpans = Boolean(lineBlock.querySelector("[data-rt-type]"));
+                if (lineText && !hasExistingSpans) {
+                  if (targetType === "arab" || fontId || sizeVal) {
+                    const span = wrapBlockLineContents(lineBlock, targetType, fontId, sizeVal);
+                    placeCaretInsideEnd(span, editorEl, returnFocus);
+                  }
+                } else if (
+                  lineText &&
+                  range.startContainer.nodeType === Node.TEXT_NODE &&
+                  String(range.startContainer.nodeValue || "").replace(/\u200B/g, "").trim()
+                ) {
+                  if (targetType === "arab" || fontId || sizeVal) {
+                    const tn = range.startContainer;
+                    const span = document.createElement("span");
+                    tn.parentNode.insertBefore(span, tn);
+                    span.appendChild(tn);
+                    applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                    placeCaretInsideEnd(span, editorEl, returnFocus);
+                  }
+                } else if (targetType === "arab" || fontId || sizeVal) {
+                  const span = document.createElement("span");
+                  span.textContent = "\u200B";
+                  applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                  range.insertNode(span);
+                  placeCaretInsideEnd(span, editorEl, returnFocus);
+                }
+              } else {
+                // Teks langsung di root editorEl (belum terbungkus <div>): bungkus seluruh root jika belum ada <br> / span
+                const hasBrOrBlock = Boolean(editorEl.querySelector("br, div, p, [data-rt-type]"));
+                if (!hasBrOrBlock) {
+                  if (targetType === "arab" || fontId || sizeVal) {
+                    const span = document.createElement("span");
+                    while (editorEl.firstChild) {
+                      span.appendChild(editorEl.firstChild);
+                    }
+                    applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                    editorEl.appendChild(span);
+                    placeCaretInsideEnd(span, editorEl, returnFocus);
+                  }
+                } else if (
+                  range.startContainer.nodeType === Node.TEXT_NODE &&
+                  String(range.startContainer.nodeValue || "").replace(/\u200B/g, "").trim()
+                ) {
+                  if (targetType === "arab" || fontId || sizeVal) {
+                    const tn = range.startContainer;
+                    const span = document.createElement("span");
+                    tn.parentNode.insertBefore(span, tn);
+                    span.appendChild(tn);
+                    applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                    placeCaretInsideEnd(span, editorEl, returnFocus);
+                  }
+                } else if (targetType === "arab" || fontId || sizeVal) {
+                  const span = document.createElement("span");
+                  span.textContent = "\u200B";
+                  applyRtSpanVisualStyle(span, targetType, fontId, sizeVal);
+                  range.insertNode(span);
+                  placeCaretInsideEnd(span, editorEl, returnFocus);
+                }
+              }
             }
           }
+        }
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      // Pastikan dropdown font & ukuran di toolbar tetap sesuai nilai yang baru dipilih
+      if (mode !== "clear") {
+        if (els.floatingFontSelect && Array.from(els.floatingFontSelect.options).some((o) => o.value === fontId)) {
+          els.floatingFontSelect.value = fontId;
+        }
+        if (els.floatingSizeInput) {
+          els.floatingSizeInput.value = sizeVal ? String(sizeVal) : "";
+        }
+        if (els.floatingSizePreset) {
+          const sStr = sizeVal ? String(sizeVal) : "";
+          els.floatingSizePreset.value = Array.from(els.floatingSizePreset.options).some((o) => o.value === sStr)
+            ? sStr
+            : "";
         }
       }
 
-      updateEditorLineDirections(editorEl);
-      syncEditorToBackingField(editorEl, true);
       if (returnFocus) {
         positionFloatingFontBar(editorEl);
       }

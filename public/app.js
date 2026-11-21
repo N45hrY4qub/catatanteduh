@@ -235,7 +235,7 @@
         const safeFam = String(f.family || f.id).replace(/["\\]/g, "");
         const safeUrl = resolveR2FontUrl(f.url).replace(/["\\]/g, "");
         const fmt = inferFontFormat(safeUrl);
-        return `@font-face { font-family: "${safeFam}"; src: url("${safeUrl}") format("${fmt}"); font-display: swap; font-weight: normal; font-style: normal; }`;
+        return `@font-face { font-family: "${safeFam}"; src: url("${safeUrl}") format("${fmt}"); font-display: swap; font-weight: 100 900; font-style: normal; }`;
       })
       .join("\n");
 
@@ -249,8 +249,18 @@
       r2StyleEl.textContent = r2Css;
     }
 
-    // 2. Muat Google Fonts tambahan untuk koleksi pilihan teks
-    const alreadyInIndex = new Set(["Fraunces", "Plus Jakarta Sans", "Source Serif 4"]);
+    // 2. Muat Google Fonts tambahan kustom untuk koleksi pilihan teks
+    const alreadyInIndex = new Set([
+      "Fraunces",
+      "Plus Jakarta Sans",
+      "Source Serif 4",
+      "Amiri Quran",
+      "Amiri",
+      "Scheherazade New",
+      "Noto Naskh Arabic",
+      "Readex Pro",
+      "Lora",
+    ]);
     const weightsMap = {
       "Amiri Quran": "Amiri+Quran",
       Amiri: "Amiri:ital,wght@0,400;0,700;1,400",
@@ -354,7 +364,7 @@
       const hasArabic = ARABIC_CHAR_RE.test(plainInner);
 
       const safeFam = fontObj ? String(fontObj.family).replace(/["\\']/g, "") : "";
-      const fallback = fontObj && fontObj.kategori === "arab" ? '"Amiri", serif' : "Georgia, serif";
+      const fallback = fontObj && fontObj.kategori === "arab" ? "'Amiri', serif" : "Georgia, serif";
       const styleParts = [];
       if (safeFam) {
         styleParts.push(`font-family: '${safeFam}', ${fallback};`);
@@ -392,10 +402,24 @@
     return result;
   }
 
+  function distributeMultilineRichTags(rawText) {
+    return String(rawText || "").replace(
+      /\[(font|arab)((?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
+      (_full, tag, attrs, inner) => {
+        if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
+        return inner
+          .split(/\r?\n/)
+          .map((part) => (part ? `[${tag}${attrs}]${part}[/${tag}]` : ""))
+          .join("\n");
+      }
+    );
+  }
+
   function formatRichLinesHtml(rawText, siteData) {
-    const lines = String(rawText || "").split(/\n+/);
+    const normalized = distributeMultilineRichTags(rawText);
+    const lines = normalized.split(/\r?\n+/).filter((line) => line !== "");
     if (lines.length <= 1) {
-      return formatRichInlineHtml(rawText, siteData);
+      return formatRichInlineHtml(lines[0] !== undefined ? lines[0] : normalized, siteData);
     }
     return lines
       .map((line) => {
