@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 22.21.23.
+ * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 22.46.32.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -142,6 +142,10 @@ window.SITE_DATA = {
       {
         "nama": "Ilmu Qiroah",
         "deskripsi": "Ragam qira'at mutawatirah dan sejarah periwayatannya."
+      },
+      {
+        "nama": "Refleksi",
+        "deskripsi": "Pengingat diri"
       }
     ]
   },
@@ -171,7 +175,7 @@ window.SITE_DATA = {
   "tulisan": [
     {
       "id": "art-1",
-      "status": "published",
+      "status": "trash",
       "judul": "Seni Berhenti Sejenak di Tengah Dunia yang Terburu-buru",
       "tanggal": "14 November 2026",
       "kategori": "Refleksi Diri",
@@ -183,7 +187,9 @@ window.SITE_DATA = {
         "Berhenti sejenak bukanlah tanda kelemahan atau kemalasan. Dalam tradisi para penuntut ilmu terdahulu, jeda adalah ruang bagi muhasabah—memeriksa kembali apakah langkah yang kita ambil masih selaras dengan nilai yang kita yakini, atau sekadar ikut-ikutan arus keramaian.",
         "Mulailah dengan hal kecil hari ini: sisihkan lima belas menit tanpa gawai sebelum beraktivitas. Tarik napas dalam, syukuri nikmat sehat yang sering terlupa, dan tetapkan satu niat baik yang tulus untuk dijalani sepanjang hari.",
         "Ketika hati tenang, keputusan yang diambil menjadi lebih jernih, ucapan lebih terjaga, dan lelah pun berubah menjadi ibadah yang bernilai."
-      ]
+      ],
+      "previousStatus": "published",
+      "deletedAt": "2026-11-22T15:40:59.210Z"
     },
     {
       "id": "art-2",
