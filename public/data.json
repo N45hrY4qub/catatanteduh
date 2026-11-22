@@ -5,15 +5,144 @@
     "gayaKartu": "halus",
     "tampilkanSorotan": true,
     "tampilkanPencarian": true,
-    "tabAktif": ["tulisan", "ebook", "flyer", "audio", "video", "diskusi"]
+    "tabAktif": [
+      "tulisan",
+      "ebook",
+      "flyer",
+      "audio",
+      "video",
+      "diskusi"
+    ],
+    "koleksiFont": [
+      {
+        "id": "uthmanic-hafs",
+        "nama": "Uthmanic Hafs v22",
+        "sumber": "r2",
+        "family": "UthmanicHafsR2",
+        "url": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/font/uthmanic_hafs_v22.woff2",
+        "kategori": "arab",
+        "builtin": true
+      },
+      {
+        "id": "amiri-quran",
+        "nama": "Amiri Quran",
+        "sumber": "google",
+        "family": "Amiri Quran",
+        "kategori": "arab",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "amiri",
+        "nama": "Amiri",
+        "sumber": "google",
+        "family": "Amiri",
+        "kategori": "arab",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "scheherazade-new",
+        "nama": "Scheherazade New",
+        "sumber": "google",
+        "family": "Scheherazade New",
+        "kategori": "arab",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "noto-naskh-arabic",
+        "nama": "Noto Naskh Arabic",
+        "sumber": "google",
+        "family": "Noto Naskh Arabic",
+        "kategori": "arab",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "readex-pro",
+        "nama": "Readex Pro",
+        "sumber": "google",
+        "family": "Readex Pro",
+        "kategori": "arab",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "fraunces",
+        "nama": "Fraunces",
+        "sumber": "google",
+        "family": "Fraunces",
+        "kategori": "latin",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "plus-jakarta-sans",
+        "nama": "Plus Jakarta Sans",
+        "sumber": "google",
+        "family": "Plus Jakarta Sans",
+        "kategori": "latin",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "source-serif-4",
+        "nama": "Source Serif 4",
+        "sumber": "google",
+        "family": "Source Serif 4",
+        "kategori": "latin",
+        "builtin": true,
+        "url": ""
+      },
+      {
+        "id": "lora",
+        "nama": "Lora",
+        "sumber": "google",
+        "family": "Lora",
+        "kategori": "latin",
+        "builtin": true,
+        "url": ""
+      }
+    ],
+    "kategoriMateri": [
+      {
+        "nama": "Aqidah",
+        "deskripsi": "Pokok keimanan, tauhid, dan pengenalan kepada Allah."
+      },
+      {
+        "nama": "Fiqh",
+        "deskripsi": "Panduan hukum ibadah, muamalah, dan keseharian."
+      },
+      {
+        "nama": "Hadits",
+        "deskripsi": "Penjelasan riwayat nabawi dan hikmah sunnah."
+      },
+      {
+        "nama": "Tazkiyatun Nafs",
+        "deskripsi": "Penyucian jiwa, adab hati, dan muhasabah diri."
+      },
+      {
+        "nama": "Bahasa Arab",
+        "deskripsi": "Kaidah nahwu, shorf, dan pemahaman teks Arab."
+      },
+      {
+        "nama": "Tajwid",
+        "deskripsi": "Makhraj huruf, sifat bacaan, dan tartil Al-Qur'an."
+      },
+      {
+        "nama": "Ilmu Qiroah",
+        "deskripsi": "Ragam qira'at mutawatirah dan sejarah periwayatannya."
+      }
+    ]
   },
   "profil": {
     "namaWebsite": "Catatan Teduh",
     "kicker": "Ruang Berbagi Ilmu · Edisi Terbuka",
     "judulUtama": "Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang",
     "subjudul": "— ruang berbagi ilmu & nasihat kehidupan —",
-    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini saya menghimpun catatan refleksi kehidupan, buku saku digital, pengingat visual, rekaman audio, serta ruang diskusi terbuka yang dapat diakses siapa saja secara bebas.",
-    "namaPemilik": "Ahmad Fauzan",
+    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini saya menghimpun catatan dan ilmu-ilmu warisan para ulama, buku saku digital, pengingat visual, rekaman audio, serta video  yang dapat diakses siapa saja secara bebas.",
+    "namaPemilik": "Ibnu Yaqub Ndalu",
     "emailAdmin": "benyaqub@gmail.com",
     "tahunHakCipta": "2026"
   },
@@ -116,45 +245,16 @@
   "audio": [
     {
       "id": "audio-1",
-      "status": "published",
+      "status": "trash",
       "judul": "Berbaik Sangka pada Ketentuan yang Tertunda",
       "seri": "Siniar Jeda · Eps. 01",
       "tanggal": "10 November 2026",
       "durasi": "00:12",
       "ringkasan": "Renungan suara singkat tentang bagaimana menyikapi doa dan harapan yang belum terwujud sesuai waktu yang kita inginkan.",
-      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-berbaik-sangka.mp3"
-    },
-    {
-      "id": "audio-2",
-      "status": "published",
-      "judul": "Merawat Niat Baik di Ruang Sunyi",
-      "seri": "Siniar Jeda · Eps. 02",
-      "tanggal": "01 November 2026",
-      "durasi": "00:12",
-      "ringkasan": "Mengapa amalan dan ketulusan yang terjaga tanpa perlu pengakuan manusia justru menjadi penopang keteguhan hati paling kuat.",
-      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-merawat-niat.mp3"
+      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-berbaik-sangka.mp3",
+      "previousStatus": "published",
+      "deletedAt": "2026-11-21T11:42:05.736Z"
     }
   ],
-  "video": [
-    {
-      "id": "video-1",
-      "status": "published",
-      "judul": "Menemukan Irama Hidup yang Seimbang dan Bermakna",
-      "kategori": "Kajian Ringkas",
-      "durasi": "14 menit",
-      "tanggal": "08 November 2026",
-      "youtubeId": "jfKfPfyJRdk",
-      "ringkasan": "Pembahasan tentang menata ulang ritme harian agar kesibukan mencari nafkah tidak menggerus waktu bersama keluarga dan ketenangan ibadah."
-    },
-    {
-      "id": "video-2",
-      "status": "published",
-      "judul": "Empat Kebiasaan Sederhana Penjaga Kejernihan Pikiran",
-      "kategori": "Catatan Kehidupan",
-      "durasi": "11 menit",
-      "tanggal": "27 Oktober 2026",
-      "youtubeId": "5qap5aO4i9A",
-      "ringkasan": "Langkah-langkah praktis mengurangi kebisingan mental melalui kebiasaan membaca, menulis catatan harian, menjaga ucapan, dan menyaring informasi."
-    }
-  ]
+  "video": []
 }
