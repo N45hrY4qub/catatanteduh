@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 21.03.13.
+ * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 22.21.23.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -207,23 +207,15 @@ window.SITE_DATA = {
   "flyer": [
     {
       "id": "flyer-1",
-      "status": "published",
+      "status": "trash",
       "judul": "Tenang Seperti Air di Pagi Hari",
       "tema": "Kesabaran",
       "tanggal": "12 November 2026",
       "gambar": "/src/assets/images/flyer_sabar_1795070324398.jpg",
       "nasihat": "Jangan tergesa-gesa menilai sebuah ujian sebagai akhir dari jalan. Sebagaimana kabut pagi yang perlahan tersingkap, hikmah selalu datang bersama kesabaran yang tenang.",
-      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg"
-    },
-    {
-      "id": "flyer-2",
-      "status": "published",
-      "judul": "Cukupkan Hati dengan Syukur",
-      "tema": "Rasa Syukur",
-      "tanggal": "05 November 2026",
-      "gambar": "/src/assets/images/flyer_syukur_1795070324787.jpg",
-      "nasihat": "Kekayaan sejati bukan diukur dari seberapa banyak yang kita kumpulkan, melainkan seberapa tenang hati kita mensyukuri apa yang hari ini sudah ada di genggaman.",
-      "namaFileUnduh": "Flyer-Nasihat-Syukur.jpg"
+      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg",
+      "previousStatus": "published",
+      "deletedAt": "2026-11-22T15:19:48.591Z"
     }
   ],
   "audio": [
