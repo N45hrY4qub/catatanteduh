@@ -162,14 +162,26 @@
     btnFormatItalic: document.getElementById("btn-format-italic"),
     btnFormatUnderline: document.getElementById("btn-format-underline"),
     btnFormatStrike: document.getElementById("btn-format-strike"),
+    btnFormatColor: document.getElementById("btn-format-color"),
+    btnFormatColorBar: document.getElementById("btn-format-color-bar"),
     btnFormatLink: document.getElementById("btn-format-link"),
     alignButtons: Array.from(document.querySelectorAll("[data-format-align]")),
+    btnFormatUl: document.getElementById("btn-format-ul"),
+    btnFormatOl: document.getElementById("btn-format-ol"),
     btnFormatQuote: document.getElementById("btn-format-quote"),
+    indentModeSelect: document.getElementById("studio-indent-mode-select"),
     btnFormatOutdent: document.getElementById("btn-format-outdent"),
+    indentInput: document.getElementById("studio-indent-input"),
+    indentPreset: document.getElementById("studio-indent-preset"),
     btnFormatIndent: document.getElementById("btn-format-indent"),
     btnToggleDropCap: document.getElementById("btn-toggle-dropcap"),
     btnApplyArabBlock: document.getElementById("btn-apply-arab-block"),
     btnClearTextFont: document.getElementById("btn-clear-text-font"),
+    floatingColorRow: document.getElementById("studio-floating-color-row"),
+    colorSwatches: Array.from(document.querySelectorAll("[data-pick-color]")),
+    textColorPicker: document.getElementById("studio-text-color-picker"),
+    btnClearTextColor: document.getElementById("btn-clear-text-color"),
+    btnCloseColorRow: document.getElementById("btn-close-color-row"),
     floatingLinkRow: document.getElementById("studio-floating-link-row"),
     textLinkInput: document.getElementById("studio-text-link-input"),
     btnApplyTextLink: document.getElementById("btn-apply-text-link"),
@@ -616,6 +628,13 @@ window.SITE_DATA = ${serialized};
       clearTimeout(studio.floatingBlurTimer);
       studio.floatingBlurTimer = null;
     }
+    if (els.floatingColorRow) {
+      els.floatingColorRow.classList.add("hidden");
+      els.floatingColorRow.classList.remove("flex");
+    }
+    if (els.btnFormatColor) {
+      els.btnFormatColor.setAttribute("aria-expanded", "false");
+    }
     if (els.floatingLinkRow) {
       els.floatingLinkRow.classList.add("hidden");
       els.floatingLinkRow.classList.remove("flex");
@@ -751,7 +770,7 @@ window.SITE_DATA = ${serialized};
     function renderTokens(segment) {
       const text = String(segment || "");
       const re =
-        /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
+        /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[color=(#[0-9a-f]{3,6})\]([\s\S]*?)\[\/color\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
       let out = "";
       let lastIdx = 0;
       let m;
@@ -774,9 +793,17 @@ window.SITE_DATA = ${serialized};
             out += `<s>${innerHtml}</s>`;
           }
         } else if (m[7] !== undefined) {
-          const decodedUrl = String(m[7] || "").replace(/%5D/gi, "]");
-          const safeUrl = App.sanitizeRichLinkUrl(decodedUrl);
+          const safeColor = App.sanitizeRichColor(m[7]);
           const innerHtml = renderTokens(m[8] || "");
+          if (safeColor) {
+            out += `<span data-rt-color="${App.escapeHtml(safeColor)}" style="color: ${App.escapeHtml(safeColor)};">${innerHtml}</span>`;
+          } else {
+            out += innerHtml;
+          }
+        } else if (m[9] !== undefined) {
+          const decodedUrl = String(m[9] || "").replace(/%5D/gi, "]");
+          const safeUrl = App.sanitizeRichLinkUrl(decodedUrl);
+          const innerHtml = renderTokens(m[10] || "");
           if (safeUrl) {
             out += `<a href="${App.escapeHtml(
               safeUrl
@@ -831,34 +858,68 @@ window.SITE_DATA = ${serialized};
       return meta.inner ? renderTokens(meta.inner) : "";
     }
 
-    return input
-      .split(/\r?\n/)
-      .map((line) => {
-        const meta = App.parseRichBlockMeta(line);
-        const dir = App.detectTextDirection(meta.inner);
-        const clsList = [];
-        if (meta.isQuote) clsList.push("ct-blockquote");
-        if (meta.align) {
-          clsList.push(`ct-align-${meta.align}`);
-        } else if (dir === "rtl") {
-          clsList.push("text-right", "leading-[2.0]");
+    const parsedLines = input.split(/\r?\n/).map((line) => App.parseRichBlockMeta(line));
+    const buildLineAttrs = (meta, dir) => {
+      const clsList = [];
+      if (meta.isQuote && !meta.listType) clsList.push("ct-blockquote");
+      if (meta.align) {
+        clsList.push(`ct-align-${meta.align}`);
+      } else if (dir === "rtl") {
+        clsList.push("text-right", "leading-[2.0]");
+      }
+      const indent = App.normalizeIndentLevel(meta.indent);
+      const indentMode = App.normalizeIndentMode(meta.indentMode);
+      if (indent > 0) {
+        if (indentMode === "first") {
+          clsList.push("ct-indent-first");
+        } else if (indentMode === "hanging") {
+          clsList.push("ct-indent-hanging");
+        } else {
+          clsList.push("ct-indent");
+          if (Number.isInteger(indent) && indent >= 1 && indent <= 4) {
+            clsList.push(`ct-indent-${indent}`);
+          }
         }
-        if (meta.indent >= 1 && meta.indent <= 4) {
-          clsList.push(`ct-indent-${meta.indent}`);
+      }
+      const styleStr = App.buildRichBlockStyle(meta);
+      return [
+        `dir="${dir}"`,
+        meta.align ? `data-rt-align="${App.escapeHtml(meta.align)}"` : "",
+        indent > 0 ? `data-rt-indent="${indent}"` : "",
+        indent > 0 && indentMode !== "all" ? `data-rt-indent-mode="${indentMode}"` : "",
+        clsList.length ? `class="${clsList.join(" ")}"` : "",
+        styleStr ? `style="${App.escapeHtml(styleStr)}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    };
+
+    const htmlChunks = [];
+    let idx = 0;
+    while (idx < parsedLines.length) {
+      const meta = parsedLines[idx];
+      if (meta.listType === "ul" || meta.listType === "ol") {
+        const listTag = meta.listType;
+        const listDir = App.detectTextDirection(meta.inner);
+        const liParts = [];
+        while (idx < parsedLines.length && parsedLines[idx].listType === listTag) {
+          const lm = parsedLines[idx];
+          const lDir = App.detectTextDirection(lm.inner);
+          const lInner = lm.inner ? renderTokens(lm.inner) : "<br>";
+          liParts.push(`<li ${buildLineAttrs(lm, lDir)}>${lInner}</li>`);
+          idx += 1;
         }
-        const tag = meta.isQuote ? "blockquote" : "div";
-        const attrs = [
-          `dir="${dir}"`,
-          meta.align ? `data-rt-align="${App.escapeHtml(meta.align)}"` : "",
-          meta.indent >= 1 && meta.indent <= 4 ? `data-rt-indent="${meta.indent}"` : "",
-          clsList.length ? `class="${clsList.join(" ")}"` : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const inner = meta.inner ? renderTokens(meta.inner) : "<br>";
-        return `<${tag} ${attrs}>${inner}</${tag}>`;
-      })
-      .join("");
+        htmlChunks.push(`<${listTag} dir="${listDir}" class="ct-list ct-list-${listTag}">${liParts.join("")}</${listTag}>`);
+        continue;
+      }
+
+      const dir = App.detectTextDirection(meta.inner);
+      const tag = meta.isQuote ? "blockquote" : "div";
+      const inner = meta.inner ? renderTokens(meta.inner) : "<br>";
+      htmlChunks.push(`<${tag} ${buildLineAttrs(meta, dir)}>${inner}</${tag}>`);
+      idx += 1;
+    }
+    return htmlChunks.join("");
   }
 
   function wrapSerializedRichTagPerLine(tagName, attrStr, inner) {
@@ -902,39 +963,58 @@ window.SITE_DATA = ${serialized};
 
     if (!inner) return "";
 
+    let out = inner;
+    if (node.dataset && node.dataset.rtColor) {
+      const safeDataColor = App.sanitizeRichColor(node.dataset.rtColor);
+      if (safeDataColor) {
+        out = wrapSerializedRichTagPerLine("color", `=${safeDataColor}`, out);
+      }
+    }
+
     if (node.dataset && node.dataset.rtType) {
       const type = node.dataset.rtType === "arab" ? "arab" : "font";
       const fontId = (node.dataset.rtFont || "").trim().toLowerCase();
       const size = parseInt(node.dataset.rtSize || "0", 10);
-      if (type === "font" && !fontId && !(size >= 10 && size <= 72)) return inner;
+      if (type === "font" && !fontId && !(size >= 10 && size <= 72)) return out;
       const attrs = `${fontId ? `=${fontId}` : ""}${size >= 10 && size <= 72 ? ` size=${size}` : ""}`;
-      return wrapSerializedRichTagPerLine(type, attrs, inner);
+      return wrapSerializedRichTagPerLine(type, attrs, out);
+    }
+
+    if (node.dataset && node.dataset.rtColor) {
+      return out;
     }
 
     const tag = node.tagName;
     if (tag === "A") {
       const safeHref = App.sanitizeRichLinkUrl(node.getAttribute("href") || "");
-      if (!safeHref) return inner;
+      if (!safeHref) return out;
       const encodedHref = safeHref.replace(/\]/g, "%5D");
-      return wrapSerializedRichTagPerLine("url", `=${encodedHref}`, inner);
+      return wrapSerializedRichTagPerLine("url", `=${encodedHref}`, out);
     }
     if (tag === "B" || tag === "STRONG") {
-      return wrapSerializedRichTagPerLine("b", "", inner);
+      return wrapSerializedRichTagPerLine("b", "", out);
     }
     if (tag === "I" || tag === "EM") {
-      return wrapSerializedRichTagPerLine("i", "", inner);
+      return wrapSerializedRichTagPerLine("i", "", out);
     }
     if (tag === "U") {
-      return wrapSerializedRichTagPerLine("u", "", inner);
+      return wrapSerializedRichTagPerLine("u", "", out);
     }
     if (tag === "S" || tag === "STRIKE" || tag === "DEL") {
-      return wrapSerializedRichTagPerLine("s", "", inner);
+      return wrapSerializedRichTagPerLine("s", "", out);
+    }
+    if (tag === "FONT" && node.getAttribute("color")) {
+      const fontCol = App.sanitizeRichColor(node.getAttribute("color"));
+      if (fontCol) out = wrapSerializedRichTagPerLine("color", `=${fontCol}`, out);
     }
 
     // Fallback jika browser menyisipkan inline CSS (styleWithCSS)
-    let out = inner;
     const st = node.style;
     if (st) {
+      if (st.color) {
+        const inlineCol = App.sanitizeRichColor(st.color);
+        if (inlineCol) out = wrapSerializedRichTagPerLine("color", `=${inlineCol}`, out);
+      }
       const deco = String(st.textDecorationLine || st.textDecoration || "").toLowerCase();
       if (deco.includes("line-through")) out = wrapSerializedRichTagPerLine("s", "", out);
       if (deco.includes("underline")) out = wrapSerializedRichTagPerLine("u", "", out);
@@ -951,45 +1031,75 @@ window.SITE_DATA = ${serialized};
   function wrapBlockMetaTags(lineText, meta) {
     let out = String(lineText || "");
     if (!out) return "";
-    const indent = meta && meta.indent >= 1 && meta.indent <= 4 ? meta.indent : 0;
+    const indent = App.normalizeIndentLevel(meta && meta.indent);
+    const indentMode = App.normalizeIndentMode(meta && meta.indentMode);
     const align =
       meta && ["left", "center", "right", "justify"].includes(meta.align) ? meta.align : "";
     const isQuote = Boolean(meta && meta.isQuote);
-    if (indent) out = `[indent=${indent}]${out}[/indent]`;
+    const listType = meta && (meta.listType === "ul" || meta.listType === "ol") ? meta.listType : "";
+    if (indent > 0) {
+      const modeAttr = indentMode !== "all" ? ` mode=${indentMode}` : "";
+      out = `[indent=${indent}${modeAttr}]${out}[/indent]`;
+    }
     if (align) out = `[align=${align}]${out}[/align]`;
-    if (isQuote) out = `[quote]${out}[/quote]`;
+    if (listType) {
+      out = `[${listType}]${out}[/${listType}]`;
+    } else if (isQuote) {
+      out = `[quote]${out}[/quote]`;
+    }
     return out;
   }
 
   function getBlockNodeMeta(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) {
-      return { isQuote: false, align: "", indent: 0 };
+      return { isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
     }
-    const isQuote = el.tagName === "BLOCKQUOTE" || (el.dataset && el.dataset.rtQuote === "true");
+    let listType = "";
+    if (el.tagName === "LI" && el.parentNode) {
+      if (el.parentNode.tagName === "UL") listType = "ul";
+      else if (el.parentNode.tagName === "OL") listType = "ol";
+    } else if (el.tagName === "UL") {
+      listType = "ul";
+    } else if (el.tagName === "OL") {
+      listType = "ol";
+    }
+    const isQuote = !listType && (el.tagName === "BLOCKQUOTE" || (el.dataset && el.dataset.rtQuote === "true"));
     let align = (el.dataset && el.dataset.rtAlign) || "";
     if (!align && el.style && el.style.textAlign) {
       const stAlign = String(el.style.textAlign).toLowerCase();
       if (["left", "center", "right", "justify"].includes(stAlign)) align = stAlign;
     }
-    const rawIndent = parseInt((el.dataset && el.dataset.rtIndent) || "0", 10);
-    const indent = Number.isFinite(rawIndent) ? Math.max(0, Math.min(4, rawIndent)) : 0;
-    return { isQuote, align, indent };
+    const indent = App.normalizeIndentLevel(el.dataset && el.dataset.rtIndent);
+    const indentMode = App.normalizeIndentMode(el.dataset && el.dataset.rtIndentMode);
+    return { isQuote, listType, align, indent, indentMode };
   }
 
   function applyBlockVisualMeta(el, meta, dir, isMultilineBlock) {
     if (!el || !el.classList) return;
-    const m = meta || { isQuote: false, align: "", indent: 0 };
+    const m = meta || { isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
+    const indent = App.normalizeIndentLevel(m.indent);
+    const indentMode = App.normalizeIndentMode(m.indentMode);
+
     if (m.align && ["left", "center", "right", "justify"].includes(m.align)) {
       el.dataset.rtAlign = m.align;
     } else {
       delete el.dataset.rtAlign;
     }
-    if (m.indent >= 1 && m.indent <= 4) {
-      el.dataset.rtIndent = String(m.indent);
+    if (indent > 0) {
+      el.dataset.rtIndent = String(indent);
+      if (indentMode !== "all") {
+        el.dataset.rtIndentMode = indentMode;
+      } else {
+        delete el.dataset.rtIndentMode;
+      }
+      if (el.style) el.style.setProperty("--ct-indent-lv", String(indent));
     } else {
       delete el.dataset.rtIndent;
+      delete el.dataset.rtIndentMode;
+      if (el.style) el.style.removeProperty("--ct-indent-lv");
     }
-    if (el.tagName !== "BLOCKQUOTE") {
+
+    if (el.tagName !== "BLOCKQUOTE" && el.tagName !== "LI") {
       if (m.isQuote) {
         el.dataset.rtQuote = "true";
       } else {
@@ -999,12 +1109,15 @@ window.SITE_DATA = ${serialized};
       delete el.dataset.rtQuote;
     }
 
-    el.classList.toggle("ct-blockquote", Boolean(m.isQuote));
+    el.classList.toggle("ct-blockquote", Boolean(m.isQuote && el.tagName !== "LI"));
     ["left", "center", "right", "justify"].forEach((a) => {
       el.classList.toggle(`ct-align-${a}`, m.align === a);
     });
+    el.classList.toggle("ct-indent", indent > 0 && indentMode === "all");
+    el.classList.toggle("ct-indent-first", indent > 0 && indentMode === "first");
+    el.classList.toggle("ct-indent-hanging", indent > 0 && indentMode === "hanging");
     for (let lv = 1; lv <= 4; lv += 1) {
-      el.classList.toggle(`ct-indent-${lv}`, m.indent === lv);
+      el.classList.toggle(`ct-indent-${lv}`, indentMode === "all" && indent === lv);
     }
     if (isMultilineBlock) {
       const useRtlDefault = !m.align && dir === "rtl";
@@ -1026,6 +1139,36 @@ window.SITE_DATA = ${serialized};
 
     const children = Array.from(container.childNodes);
     children.forEach((child, idx) => {
+      if (child.nodeType === Node.ELEMENT_NODE && (child.tagName === "UL" || child.tagName === "OL")) {
+        flushInline();
+        const listTag = child.tagName === "OL" ? "ol" : "ul";
+        const parentMeta = getBlockNodeMeta(child);
+        Array.from(child.children).forEach((li) => {
+          if (li.nodeType !== Node.ELEMENT_NODE) return;
+          if (li.tagName === "LI") {
+            const liMeta = getBlockNodeMeta(li);
+            liMeta.listType = listTag;
+            if (!liMeta.align && parentMeta.align) liMeta.align = parentMeta.align;
+            if (!liMeta.indent && parentMeta.indent) {
+              liMeta.indent = parentMeta.indent;
+              liMeta.indentMode = parentMeta.indentMode;
+            }
+            const subLines = collectEditorLines(li);
+            if (subLines.length) {
+              subLines.forEach((sl) => {
+                lines.push(sl ? wrapBlockMetaTags(sl, liMeta) : "");
+              });
+            } else {
+              lines.push("");
+            }
+          } else {
+            const subLines = collectEditorLines(li);
+            subLines.forEach((sl) => lines.push(sl));
+          }
+        });
+        return;
+      }
+
       if (
         child.nodeType === Node.ELEMENT_NODE &&
         ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(child.tagName)
@@ -1089,18 +1232,18 @@ window.SITE_DATA = ${serialized};
     const isDropCapOn = Boolean(dropCapInput && dropCapInput.checked);
     if (!isDropCapOn) return;
 
-    const blocks = Array.from(isiEditor.children).filter((el) =>
-      ["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)
+    const firstTopBlock = Array.from(isiEditor.children).find((el) =>
+      ["DIV", "P", "BLOCKQUOTE", "UL", "OL"].includes(el.tagName)
     );
 
-    if (blocks.length > 0) {
-      const firstBlock = blocks[0];
-      const text = String(firstBlock.textContent || "").replace(/\u200B/g, "").trim();
+    if (firstTopBlock) {
+      if (["UL", "OL", "BLOCKQUOTE"].includes(firstTopBlock.tagName)) return;
+      const text = String(firstTopBlock.textContent || "").replace(/\u200B/g, "").trim();
       if (!text) return;
-      const meta = getBlockNodeMeta(firstBlock);
-      const dir = firstBlock.getAttribute("dir") || App.detectTextDirection(text);
-      if (!meta.isQuote && dir !== "rtl" && meta.align !== "center" && meta.align !== "right") {
-        firstBlock.classList.add("prose-dropcap");
+      const meta = getBlockNodeMeta(firstTopBlock);
+      const dir = firstTopBlock.getAttribute("dir") || App.detectTextDirection(text);
+      if (!meta.isQuote && !meta.listType && dir !== "rtl" && meta.align !== "center" && meta.align !== "right") {
+        firstTopBlock.classList.add("prose-dropcap");
       }
       return;
     }
@@ -1111,6 +1254,7 @@ window.SITE_DATA = ${serialized};
     const rootDir = isiEditor.getAttribute("dir") || App.detectTextDirection(rootText);
     if (
       !rootMeta.isQuote &&
+      !rootMeta.listType &&
       rootDir !== "rtl" &&
       rootMeta.align !== "center" &&
       rootMeta.align !== "right"
@@ -1123,15 +1267,27 @@ window.SITE_DATA = ${serialized};
     if (!editorEl) return;
     const isMultiline = editorEl.dataset.multiline === "true";
     if (isMultiline) {
-      const blocks = Array.from(editorEl.children).filter((el) =>
-        ["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)
-      );
-      blocks.forEach((blk) => {
-        const lineText = collectEditorLines(blk).join(" ");
-        const meta = getBlockNodeMeta(blk);
-        const dir = App.detectTextDirection(App.stripRichTags(lineText));
-        blk.setAttribute("dir", dir);
-        applyBlockVisualMeta(blk, meta, dir, true);
+      Array.from(editorEl.children).forEach((el) => {
+        if (el.tagName === "UL" || el.tagName === "OL") {
+          const listClass = el.tagName === "OL" ? "ct-list-ol" : "ct-list-ul";
+          el.classList.add("ct-list", listClass);
+          const listTxt = collectEditorLines(el).join(" ");
+          el.setAttribute("dir", App.detectTextDirection(App.stripRichTags(listTxt)));
+          Array.from(el.children).forEach((li) => {
+            if (li.tagName !== "LI") return;
+            const lineText = collectEditorLines(li).join(" ");
+            const meta = getBlockNodeMeta(li);
+            const dir = App.detectTextDirection(App.stripRichTags(lineText));
+            li.setAttribute("dir", dir);
+            applyBlockVisualMeta(li, meta, dir, true);
+          });
+        } else if (["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)) {
+          const lineText = collectEditorLines(el).join(" ");
+          const meta = getBlockNodeMeta(el);
+          const dir = App.detectTextDirection(App.stripRichTags(lineText));
+          el.setAttribute("dir", dir);
+          applyBlockVisualMeta(el, meta, dir, true);
+        }
       });
     } else {
       const meta = getBlockNodeMeta(editorEl);
@@ -1181,17 +1337,34 @@ window.SITE_DATA = ${serialized};
 
     let singleBlockAttrs = "";
     let singleBlockClasses = "";
+    let singleBlockStyle = "";
     if (!multiline) {
       const meta = App.parseRichBlockMeta(rawVal.replace(/\r?\n+/g, " "));
       const clsArr = [];
       if (meta.isQuote) clsArr.push("ct-blockquote");
       if (meta.align) clsArr.push(`ct-align-${meta.align}`);
-      if (meta.indent >= 1 && meta.indent <= 4) clsArr.push(`ct-indent-${meta.indent}`);
+      const indent = App.normalizeIndentLevel(meta.indent);
+      const indentMode = App.normalizeIndentMode(meta.indentMode);
+      if (indent > 0) {
+        if (indentMode === "first") {
+          clsArr.push("ct-indent-first");
+        } else if (indentMode === "hanging") {
+          clsArr.push("ct-indent-hanging");
+        } else {
+          clsArr.push("ct-indent");
+          if (Number.isInteger(indent) && indent >= 1 && indent <= 4) {
+            clsArr.push(`ct-indent-${indent}`);
+          }
+        }
+        singleBlockStyle = `style="${App.escapeHtml(App.buildRichBlockStyle(meta))}"`;
+      }
       singleBlockClasses = clsArr.join(" ");
       singleBlockAttrs = [
         meta.isQuote ? 'data-rt-quote="true"' : "",
         meta.align ? `data-rt-align="${App.escapeHtml(meta.align)}"` : "",
-        meta.indent >= 1 && meta.indent <= 4 ? `data-rt-indent="${meta.indent}"` : "",
+        indent > 0 ? `data-rt-indent="${indent}"` : "",
+        indent > 0 && indentMode !== "all" ? `data-rt-indent-mode="${indentMode}"` : "",
+        singleBlockStyle,
       ]
         .filter(Boolean)
         .join(" ");
@@ -2807,6 +2980,7 @@ window.SITE_DATA = ${serialized};
         rtQuote: (editorEl.dataset && editorEl.dataset.rtQuote) || "",
         rtAlign: (editorEl.dataset && editorEl.dataset.rtAlign) || "",
         rtIndent: (editorEl.dataset && editorEl.dataset.rtIndent) || "",
+        rtIndentMode: (editorEl.dataset && editorEl.dataset.rtIndentMode) || "",
       };
     }
 
@@ -2816,7 +2990,8 @@ window.SITE_DATA = ${serialized};
         a.html === b.html &&
         a.rtQuote === b.rtQuote &&
         a.rtAlign === b.rtAlign &&
-        a.rtIndent === b.rtIndent
+        a.rtIndent === b.rtIndent &&
+        a.rtIndentMode === b.rtIndentMode
       );
     }
 
@@ -2908,6 +3083,8 @@ window.SITE_DATA = ${serialized};
           else delete editorEl.dataset.rtAlign;
           if (snap.rtIndent) editorEl.dataset.rtIndent = snap.rtIndent;
           else delete editorEl.dataset.rtIndent;
+          if (snap.rtIndentMode) editorEl.dataset.rtIndentMode = snap.rtIndentMode;
+          else delete editorEl.dataset.rtIndentMode;
         }
         updateEditorLineDirections(editorEl);
         syncEditorToBackingField(editorEl, true);
@@ -3018,11 +3195,93 @@ window.SITE_DATA = ${serialized};
         return;
       }
 
-      // Tekan Enter 2x di akhir blockquote -> kembali ke paragraf normal
+      // Tekan Enter pada <li> kosong atau Enter 2x di akhir blockquote -> kembali ke paragraf normal
       if (e.key === "Enter" && !e.shiftKey && richEditor.dataset.multiline === "true") {
         const sel = window.getSelection();
         if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
           const r = sel.getRangeAt(0);
+
+          // 1. Cek jika kursor berada di dalam <li> kosong di dalam <ul> / <ol>
+          let curLi = r.startContainer;
+          let liEl = null;
+          while (curLi && curLi !== richEditor) {
+            if (
+              curLi.nodeType === Node.ELEMENT_NODE &&
+              curLi.tagName === "LI" &&
+              curLi.parentNode &&
+              (curLi.parentNode.tagName === "UL" || curLi.parentNode.tagName === "OL") &&
+              curLi.parentNode.parentNode === richEditor
+            ) {
+              liEl = curLi;
+              break;
+            }
+            curLi = curLi.parentNode;
+          }
+          if (liEl) {
+            const plainLi = String(liEl.textContent || "").replace(/\u200B/g, "").trim();
+            if (plainLi === "") {
+              e.preventDefault();
+              flushEditorHistory(richEditor);
+              studio.suppressEditorTrack = true;
+              try {
+                const listEl = liEl.parentNode;
+                const listTag = listEl.tagName.toLowerCase();
+                const allLis = Array.from(listEl.children).filter((c) => c.tagName === "LI");
+                const liIdx = allLis.indexOf(liEl);
+                const newDiv = document.createElement("div");
+                newDiv.setAttribute("dir", "ltr");
+                newDiv.innerHTML = "<br>";
+
+                if (allLis.length <= 1) {
+                  richEditor.replaceChild(newDiv, listEl);
+                } else if (liIdx === 0) {
+                  listEl.removeChild(liEl);
+                  richEditor.insertBefore(newDiv, listEl);
+                } else if (liIdx === allLis.length - 1) {
+                  listEl.removeChild(liEl);
+                  if (listEl.nextSibling) {
+                    richEditor.insertBefore(newDiv, listEl.nextSibling);
+                  } else {
+                    richEditor.appendChild(newDiv);
+                  }
+                } else {
+                  const afterList = document.createElement(listTag);
+                  afterList.className = listEl.className;
+                  for (let k = liIdx + 1; k < allLis.length; k += 1) {
+                    afterList.appendChild(allLis[k]);
+                  }
+                  listEl.removeChild(liEl);
+                  if (listEl.nextSibling) {
+                    richEditor.insertBefore(newDiv, listEl.nextSibling);
+                  } else {
+                    richEditor.appendChild(newDiv);
+                  }
+                  if (newDiv.nextSibling) {
+                    richEditor.insertBefore(afterList, newDiv.nextSibling);
+                  } else {
+                    richEditor.appendChild(afterList);
+                  }
+                }
+
+                const caretR = document.createRange();
+                caretR.setStart(newDiv, 0);
+                caretR.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(caretR);
+                studio.lastTextControl = { el: richEditor, range: caretR.cloneRange() };
+
+                updateEditorLineDirections(richEditor);
+                syncEditorToBackingField(richEditor, true);
+              } finally {
+                studio.suppressEditorTrack = false;
+              }
+              commitEditorHistory(richEditor);
+              syncFloatingBarControlsFromEditor(richEditor, studio.lastTextControl.range);
+              positionFloatingFontBar(richEditor);
+              return;
+            }
+          }
+
           let cur = r.startContainer;
           let quoteBlk = null;
           while (cur && cur !== richEditor) {
@@ -3305,6 +3564,24 @@ window.SITE_DATA = ${serialized};
       });
     }
 
+    function findEnclosingColorSpan(node, rootEl) {
+      let cur = node;
+      while (cur && cur !== rootEl) {
+        if (cur.nodeType === Node.ELEMENT_NODE && cur.dataset && cur.dataset.rtColor) {
+          return cur;
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    }
+
+    function stripNestedColorSpans(containerNode) {
+      if (!containerNode || !containerNode.querySelectorAll) return;
+      Array.from(containerNode.querySelectorAll("[data-rt-color]")).forEach((sp) => {
+        unwrapDomNode(sp);
+      });
+    }
+
     function getRichEditorFromNode(node) {
       let cur = node;
       while (cur && cur !== els.studioPanelBody) {
@@ -3319,12 +3596,21 @@ window.SITE_DATA = ${serialized};
     function findEnclosingBlockLine(node, rootEl) {
       let cur = node;
       while (cur && cur !== rootEl) {
-        if (
-          cur.nodeType === Node.ELEMENT_NODE &&
-          cur.parentNode === rootEl &&
-          ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(cur.tagName)
-        ) {
-          return cur;
+        if (cur.nodeType === Node.ELEMENT_NODE) {
+          if (
+            cur.tagName === "LI" &&
+            cur.parentNode &&
+            (cur.parentNode.tagName === "UL" || cur.parentNode.tagName === "OL") &&
+            cur.parentNode.parentNode === rootEl
+          ) {
+            return cur;
+          }
+          if (
+            cur.parentNode === rootEl &&
+            ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(cur.tagName)
+          ) {
+            return cur;
+          }
         }
         cur = cur.parentNode;
       }
@@ -3332,14 +3618,22 @@ window.SITE_DATA = ${serialized};
     }
 
     function getDirectLineBlocks(rootEl) {
-      return Array.from(rootEl.children).filter((el) =>
-        ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(el.tagName)
-      );
+      const out = [];
+      Array.from(rootEl.children).forEach((el) => {
+        if (el.tagName === "UL" || el.tagName === "OL") {
+          Array.from(el.children).forEach((li) => {
+            if (li.tagName === "LI") out.push(li);
+          });
+        } else if (["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(el.tagName)) {
+          out.push(el);
+        }
+      });
+      return out;
     }
 
     function stripInlineFormattingNodes(containerNode) {
       if (!containerNode || !containerNode.querySelectorAll) return;
-      Array.from(containerNode.querySelectorAll("b, strong, i, em, u, s, strike, del, a")).forEach((el) => {
+      Array.from(containerNode.querySelectorAll("b, strong, i, em, u, s, strike, del, a, font, [data-rt-color]")).forEach((el) => {
         unwrapDomNode(el);
       });
     }
@@ -3379,16 +3673,37 @@ window.SITE_DATA = ${serialized};
       const isStrike = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["S", "STRIKE", "DEL"])) || safeCmdState("strikeThrough");
       const isLink = Boolean(activeNode && findEnclosingTag(activeNode, editorEl, ["A"]));
 
+      let colorSpan = activeNode ? findEnclosingColorSpan(activeNode, editorEl) : null;
+      if (!colorSpan && range && editorEl && !range.collapsed) {
+        const innerColors = Array.from(editorEl.querySelectorAll("[data-rt-color]")).filter((sp) => {
+          try {
+            return range.intersectsNode(sp);
+          } catch (_e) {
+            return false;
+          }
+        });
+        if (innerColors.length === 1) colorSpan = innerColors[0];
+      }
+      const activeColor = colorSpan ? App.sanitizeRichColor(colorSpan.dataset.rtColor) : "";
+
       setFormatButtonActive(els.btnFormatBold, isBold);
       setFormatButtonActive(els.btnFormatItalic, isItalic);
       setFormatButtonActive(els.btnFormatUnderline, isUnderline);
       setFormatButtonActive(els.btnFormatStrike, isStrike);
+      setFormatButtonActive(els.btnFormatColor, Boolean(activeColor));
+      if (els.btnFormatColorBar) {
+        els.btnFormatColorBar.style.backgroundColor = activeColor || "#1f2937";
+      }
+      if (els.textColorPicker && activeColor) {
+        els.textColorPicker.value = activeColor;
+      }
       setFormatButtonActive(els.btnFormatLink, isLink);
 
-      // Status perataan, blockquote, indentasi, dan Drop Cap
+      // Status perataan, bullet/numbering, blockquote, indentasi fleksibel, dan Drop Cap
+      const isMultiline = Boolean(editorEl && editorEl.dataset.multiline === "true");
       let activeBlocks = [];
       if (editorEl) {
-        if (editorEl.dataset.multiline !== "true") {
+        if (!isMultiline) {
           activeBlocks = [editorEl];
         } else {
           const allBlocks = getDirectLineBlocks(editorEl);
@@ -3427,6 +3742,19 @@ window.SITE_DATA = ${serialized};
         });
       }
 
+      const isUlActive =
+        isMultiline && activeBlocks.length > 0 && activeBlocks.every((blk) => getBlockNodeMeta(blk).listType === "ul");
+      const isOlActive =
+        isMultiline && activeBlocks.length > 0 && activeBlocks.every((blk) => getBlockNodeMeta(blk).listType === "ol");
+      if (els.btnFormatUl) {
+        els.btnFormatUl.disabled = !isMultiline;
+        setFormatButtonActive(els.btnFormatUl, isUlActive);
+      }
+      if (els.btnFormatOl) {
+        els.btnFormatOl.disabled = !isMultiline;
+        setFormatButtonActive(els.btnFormatOl, isOlActive);
+      }
+
       const isQuoteActive =
         activeBlocks.length > 0 && activeBlocks.every((blk) => getBlockNodeMeta(blk).isQuote);
       setFormatButtonActive(els.btnFormatQuote, isQuoteActive);
@@ -3434,8 +3762,23 @@ window.SITE_DATA = ${serialized};
       const indentLevels = activeBlocks.map((blk) => getBlockNodeMeta(blk).indent);
       const minIndent = indentLevels.length ? Math.min(...indentLevels) : 0;
       const maxIndent = indentLevels.length ? Math.max(...indentLevels) : 0;
+      const primaryIndent = App.normalizeIndentLevel(blockMeta.indent);
+      const primaryIndentMode = App.normalizeIndentMode(blockMeta.indentMode);
+
       if (els.btnFormatOutdent) els.btnFormatOutdent.disabled = maxIndent <= 0;
       if (els.btnFormatIndent) els.btnFormatIndent.disabled = minIndent >= 4;
+      if (els.indentModeSelect && document.activeElement !== els.indentModeSelect) {
+        els.indentModeSelect.value = primaryIndentMode;
+      }
+      if (els.indentInput && document.activeElement !== els.indentInput) {
+        els.indentInput.value = primaryIndent > 0 ? String(primaryIndent) : "0";
+      }
+      if (els.indentPreset) {
+        const indStr = String(primaryIndent);
+        els.indentPreset.value = Array.from(els.indentPreset.options).some((o) => o.value === indStr)
+          ? indStr
+          : "";
+      }
 
       const dropCapInput = document.getElementById("studio-dropcap-input");
       if (els.btnToggleDropCap) {
@@ -3818,23 +4161,38 @@ window.SITE_DATA = ${serialized};
             }
           } else if (enclosing) {
             const firstChild = enclosing.firstChild;
+            const outerColor = findEnclosingColorSpan(enclosing.parentNode, editorEl);
             stripInlineFormattingNodes(enclosing);
             unwrapDomNode(enclosing);
+            if (outerColor) {
+              unwrapDomNode(outerColor);
+            }
             if (firstChild) {
               placeCaretInsideEnd(firstChild.nodeType === Node.TEXT_NODE ? firstChild.parentNode || editorEl : firstChild, editorEl, returnFocus);
             }
-          } else if (editorEl.dataset.multiline === "true") {
-            const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
-            if (lineBlock) {
-              stripNestedRtSpans(lineBlock);
-              stripInlineFormattingNodes(lineBlock);
+          } else {
+            const enclosingColor = findEnclosingColorSpan(range.startContainer, editorEl);
+            if (enclosingColor) {
+              const firstChild = enclosingColor.firstChild;
+              stripInlineFormattingNodes(enclosingColor);
+              stripNestedRtSpans(enclosingColor);
+              unwrapDomNode(enclosingColor);
+              if (firstChild) {
+                placeCaretInsideEnd(firstChild.nodeType === Node.TEXT_NODE ? firstChild.parentNode || editorEl : firstChild, editorEl, returnFocus);
+              }
+            } else if (editorEl.dataset.multiline === "true") {
+              const lineBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+              if (lineBlock) {
+                stripNestedRtSpans(lineBlock);
+                stripInlineFormattingNodes(lineBlock);
+              } else {
+                stripNestedRtSpans(editorEl);
+                stripInlineFormattingNodes(editorEl);
+              }
             } else {
               stripNestedRtSpans(editorEl);
               stripInlineFormattingNodes(editorEl);
             }
-          } else {
-            stripNestedRtSpans(editorEl);
-            stripInlineFormattingNodes(editorEl);
           }
         } else {
           const targetType = mode === "arab-block" ? "arab" : "font";
@@ -4098,7 +4456,7 @@ window.SITE_DATA = ${serialized};
 
     function ensureMultilineBlocks(editorEl) {
       if (!editorEl || editorEl.dataset.multiline !== "true") return;
-      const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+      const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "UL", "OL"]);
       const children = Array.from(editorEl.childNodes);
       const hasLoose = children.some(
         (ch) => ch.nodeType !== Node.ELEMENT_NODE || !blockTags.has(ch.tagName)
@@ -4178,6 +4536,166 @@ window.SITE_DATA = ${serialized};
       return allBlocks.length ? [allBlocks[0]] : [];
     }
 
+    function unwrapListItemsToBlocks(liNodes, replacementTag) {
+      const out = [];
+      const byList = new Map();
+      liNodes.forEach((li) => {
+        const parent = li.parentNode;
+        if (!parent || (parent.tagName !== "UL" && parent.tagName !== "OL")) return;
+        if (!byList.has(parent)) byList.set(parent, []);
+        byList.get(parent).push(li);
+      });
+
+      byList.forEach((selectedLis, listEl) => {
+        const parentRoot = listEl.parentNode;
+        if (!parentRoot) return;
+        const listTag = listEl.tagName.toLowerCase();
+        const allLis = Array.from(listEl.children).filter((c) => c.tagName === "LI");
+        const selectedSet = new Set(selectedLis);
+
+        let curList = null;
+        const frag = document.createDocumentFragment();
+        allLis.forEach((li) => {
+          if (selectedSet.has(li)) {
+            curList = null;
+            const meta = getBlockNodeMeta(li);
+            meta.listType = "";
+            if (replacementTag === "blockquote") meta.isQuote = true;
+            const newBlk = document.createElement(replacementTag || "div");
+            while (li.firstChild) newBlk.appendChild(li.firstChild);
+            if (!newBlk.childNodes.length) newBlk.innerHTML = "<br>";
+            const dir = li.getAttribute("dir") || "ltr";
+            newBlk.setAttribute("dir", dir);
+            applyBlockVisualMeta(newBlk, meta, dir, true);
+            frag.appendChild(newBlk);
+            out.push(newBlk);
+          } else {
+            if (!curList) {
+              curList = document.createElement(listTag);
+              curList.className = listEl.className || `ct-list ct-list-${listTag}`;
+              frag.appendChild(curList);
+            }
+            curList.appendChild(li);
+          }
+        });
+        parentRoot.replaceChild(frag, listEl);
+      });
+      return out;
+    }
+
+    function mergeAdjacentLists(editorEl) {
+      if (!editorEl) return;
+      let cur = editorEl.firstElementChild;
+      while (cur && cur.nextElementSibling) {
+        const next = cur.nextElementSibling;
+        if ((cur.tagName === "UL" || cur.tagName === "OL") && cur.tagName === next.tagName) {
+          while (next.firstChild) {
+            cur.appendChild(next.firstChild);
+          }
+          next.remove();
+        } else {
+          cur = next;
+        }
+      }
+    }
+
+    function toggleListType(targetListType) {
+      const cleanTag = targetListType === "ol" ? "ol" : "ul";
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      if (editorEl.dataset.multiline !== "true") return;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        if (!blocks.length) return;
+
+        const allAlreadyTarget = blocks.every((blk) => getBlockNodeMeta(blk).listType === cleanTag);
+        if (allAlreadyTarget) {
+          unwrapListItemsToBlocks(blocks, "div");
+        } else {
+          blocks.forEach((blk) => {
+            const meta = getBlockNodeMeta(blk);
+            if (meta.listType === cleanTag) return;
+
+            if (blk.tagName === "LI" && blk.parentNode && (blk.parentNode.tagName === "UL" || blk.parentNode.tagName === "OL")) {
+              const parentList = blk.parentNode;
+              const origTag = parentList.tagName.toLowerCase();
+              const allLis = Array.from(parentList.children).filter((c) => c.tagName === "LI");
+              const idx = allLis.indexOf(blk);
+
+              const newList = document.createElement(cleanTag);
+              newList.className = `ct-list ct-list-${cleanTag}`;
+              newList.appendChild(blk);
+
+              if (allLis.length === 1) {
+                parentList.parentNode.replaceChild(newList, parentList);
+              } else if (idx === 0) {
+                parentList.parentNode.insertBefore(newList, parentList);
+              } else if (idx === allLis.length - 1) {
+                if (parentList.nextSibling) {
+                  parentList.parentNode.insertBefore(newList, parentList.nextSibling);
+                } else {
+                  parentList.parentNode.appendChild(newList);
+                }
+              } else {
+                const afterList = document.createElement(origTag);
+                afterList.className = `ct-list ct-list-${origTag}`;
+                for (let k = idx + 1; k < allLis.length; k += 1) {
+                  afterList.appendChild(allLis[k]);
+                }
+                if (parentList.nextSibling) {
+                  parentList.parentNode.insertBefore(afterList, parentList.nextSibling);
+                } else {
+                  parentList.parentNode.appendChild(afterList);
+                }
+                parentList.parentNode.insertBefore(newList, afterList);
+              }
+              meta.listType = cleanTag;
+              meta.isQuote = false;
+              applyBlockVisualMeta(blk, meta, blk.getAttribute("dir") || "ltr", true);
+              return;
+            }
+
+            // Konversi DIV / P / BLOCKQUOTE menjadi <ul>/<ol><li>
+            const newList = document.createElement(cleanTag);
+            newList.className = `ct-list ct-list-${cleanTag}`;
+            const li = document.createElement("li");
+            while (blk.firstChild) li.appendChild(blk.firstChild);
+            if (!li.childNodes.length) li.innerHTML = "<br>";
+            const dir = blk.getAttribute("dir") || "ltr";
+            li.setAttribute("dir", dir);
+            meta.listType = cleanTag;
+            meta.isQuote = false;
+            applyBlockVisualMeta(li, meta, dir, true);
+            newList.appendChild(li);
+            blk.parentNode.replaceChild(newList, blk);
+          });
+          mergeAdjacentLists(editorEl);
+        }
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
     function applyBlockAlignment(alignVal) {
       const cleanAlign = ["left", "center", "right", "justify"].includes(alignVal) ? alignVal : "left";
       const targetInfo =
@@ -4236,7 +4754,15 @@ window.SITE_DATA = ${serialized};
           meta.isQuote = nextIsQuote;
           applyBlockVisualMeta(editorEl, meta, editorEl.getAttribute("dir") || "ltr", false);
         } else {
+          const listItems = blocks.filter(
+            (blk) => blk.tagName === "LI" && blk.parentNode && (blk.parentNode.tagName === "UL" || blk.parentNode.tagName === "OL")
+          );
+          if (listItems.length && nextIsQuote) {
+            unwrapListItemsToBlocks(listItems, "blockquote");
+          }
+
           blocks.forEach((blk) => {
+            if (blk.tagName === "LI") return;
             const meta = getBlockNodeMeta(blk);
             meta.isQuote = nextIsQuote;
             const targetTag = nextIsQuote ? "BLOCKQUOTE" : "DIV";
@@ -4271,7 +4797,9 @@ window.SITE_DATA = ${serialized};
       positionFloatingFontBar(editorEl);
     }
 
-    function adjustBlockIndent(delta) {
+    function setBlockIndent(nextLevel, nextMode, options) {
+      const opts = options || {};
+      const returnFocus = opts.returnFocus !== false;
       const targetInfo =
         studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
           ? studio.lastTextControl
@@ -4283,11 +4811,62 @@ window.SITE_DATA = ${serialized};
       const offsets = getSelectionOffsets(editorEl);
       studio.suppressEditorTrack = true;
       try {
+        if (returnFocus) {
+          editorEl.focus({ preventScroll: true });
+        }
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        blocks.forEach((blk) => {
+          const meta = getBlockNodeMeta(blk);
+          if (nextLevel !== undefined && nextLevel !== null) {
+            meta.indent = App.normalizeIndentLevel(nextLevel);
+          }
+          if (nextMode !== undefined && nextMode !== null) {
+            meta.indentMode = App.normalizeIndentMode(nextMode);
+          }
+          const dir = blk.getAttribute("dir") || "ltr";
+          applyBlockVisualMeta(blk, meta, dir, editorEl.dataset.multiline === "true");
+        });
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        if (returnFocus) {
+          restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+        }
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      if (returnFocus) {
+        positionFloatingFontBar(editorEl);
+      }
+    }
+
+    function adjustBlockIndent(delta) {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      const selectedMode = els.indentModeSelect ? App.normalizeIndentMode(els.indentModeSelect.value) : null;
+      studio.suppressEditorTrack = true;
+      try {
         editorEl.focus({ preventScroll: true });
         const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
         blocks.forEach((blk) => {
           const meta = getBlockNodeMeta(blk);
-          meta.indent = Math.max(0, Math.min(4, (meta.indent || 0) + delta));
+          const next = Math.round(((meta.indent || 0) + delta) * 100) / 100;
+          meta.indent = Math.max(0, Math.min(4, next));
+          if (selectedMode && meta.indent > 0 && meta.indentMode === "all" && selectedMode !== "all") {
+            meta.indentMode = selectedMode;
+          }
           const dir = blk.getAttribute("dir") || "ltr";
           applyBlockVisualMeta(blk, meta, dir, editorEl.dataset.multiline === "true");
         });
@@ -4304,6 +4883,304 @@ window.SITE_DATA = ${serialized};
         studio.lastTextControl ? studio.lastTextControl.range : null
       );
       positionFloatingFontBar(editorEl);
+    }
+
+    function openFloatingColorRow() {
+      if (!els.floatingColorRow) return;
+      if (els.floatingLinkRow) {
+        els.floatingLinkRow.classList.add("hidden");
+        els.floatingLinkRow.classList.remove("flex");
+      }
+      els.floatingColorRow.classList.remove("hidden");
+      els.floatingColorRow.classList.add("flex");
+      if (els.btnFormatColor) els.btnFormatColor.setAttribute("aria-expanded", "true");
+      if (studio.lastTextControl && studio.lastTextControl.el) {
+        positionFloatingFontBar(studio.lastTextControl.el);
+      }
+    }
+
+    function closeFloatingColorRow(refocusEditor) {
+      if (els.floatingColorRow) {
+        els.floatingColorRow.classList.add("hidden");
+        els.floatingColorRow.classList.remove("flex");
+      }
+      if (els.btnFormatColor) els.btnFormatColor.setAttribute("aria-expanded", "false");
+      if (refocusEditor && studio.lastTextControl && studio.lastTextControl.el) {
+        const editorEl = studio.lastTextControl.el;
+        studio.suppressEditorTrack = true;
+        try {
+          editorEl.focus({ preventScroll: true });
+          const sel = window.getSelection();
+          if (sel && studio.lastTextControl.range && editorEl.contains(studio.lastTextControl.range.commonAncestorContainer)) {
+            sel.removeAllRanges();
+            sel.addRange(studio.lastTextControl.range);
+          }
+        } finally {
+          studio.suppressEditorTrack = false;
+        }
+        syncFloatingBarControlsFromEditor(editorEl, studio.lastTextControl.range);
+        positionFloatingFontBar(editorEl);
+      }
+    }
+
+    function applyFloatingColor(rawColor, options) {
+      const opts = options || {};
+      const returnFocus = opts.returnFocus !== false;
+      const safeColor = rawColor ? App.sanitizeRichColor(rawColor) : "";
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+
+      const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
+
+      let range = null;
+      const liveSel = window.getSelection();
+      if (liveSel && liveSel.rangeCount > 0) {
+        const lr = liveSel.getRangeAt(0);
+        if (editorEl.contains(lr.commonAncestorContainer)) {
+          range = lr.cloneRange();
+        }
+      }
+      if (!range && targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)) {
+        range = targetInfo.range.cloneRange();
+      }
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editorEl);
+        range.collapse(false);
+      }
+
+      trimTrailingZeroOffsetBlockBoundary(range, editorEl);
+
+      studio.suppressEditorTrack = true;
+      try {
+        if (returnFocus) {
+          editorEl.focus({ preventScroll: true });
+        }
+
+        if (!safeColor) {
+          if (!range.collapsed) {
+            const startBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+            const endBlock = findEnclosingBlockLine(range.endContainer, editorEl);
+            if (editorEl.dataset.multiline === "true" && startBlock && endBlock && startBlock !== endBlock) {
+              const allBlocks = getDirectLineBlocks(editorEl);
+              allBlocks.forEach((blk) => {
+                try {
+                  if (range.intersectsNode(blk)) stripNestedColorSpans(blk);
+                } catch (_e) {}
+              });
+            } else {
+              const enclosing = findEnclosingColorSpan(range.startContainer, editorEl);
+              const enclosingEnd = findEnclosingColorSpan(range.endContainer, editorEl);
+              if (
+                enclosing &&
+                enclosing === enclosingEnd &&
+                range.toString().replace(/\u200B/g, "") === String(enclosing.textContent || "").replace(/\u200B/g, "")
+              ) {
+                const fc = enclosing.firstChild;
+                const lc = enclosing.lastChild;
+                unwrapDomNode(enclosing);
+                if (fc && lc) {
+                  const nr = document.createRange();
+                  nr.setStartBefore(fc);
+                  nr.setEndAfter(lc);
+                  if (liveSel && returnFocus) {
+                    liveSel.removeAllRanges();
+                    liveSel.addRange(nr);
+                  }
+                  studio.lastTextControl = { el: editorEl, range: nr.cloneRange() };
+                }
+              } else if (enclosing && enclosing === enclosingEnd && enclosing.parentNode) {
+                const postRange = document.createRange();
+                postRange.setStart(range.endContainer, range.endOffset);
+                postRange.setEnd(enclosing, enclosing.childNodes.length);
+                const postFrag = postRange.extractContents();
+                const midFrag = range.extractContents();
+                stripNestedColorSpans(midFrag);
+
+                const ms = midFrag.firstChild;
+                const me = midFrag.lastChild;
+                const parent = enclosing.parentNode;
+                const nextSib = enclosing.nextSibling;
+
+                if (ms) {
+                  parent.insertBefore(midFrag, nextSib);
+                }
+                if (String(postFrag.textContent || "").replace(/\u200B/g, "") || postFrag.querySelector("*")) {
+                  const afterSpan = enclosing.cloneNode(false);
+                  afterSpan.appendChild(postFrag);
+                  parent.insertBefore(afterSpan, nextSib);
+                }
+                if (!String(enclosing.textContent || "").replace(/\u200B/g, "") && !enclosing.querySelector("br, *")) {
+                  parent.removeChild(enclosing);
+                }
+                if (ms && me) {
+                  const nr = document.createRange();
+                  nr.setStartBefore(ms);
+                  nr.setEndAfter(me);
+                  if (liveSel && returnFocus) {
+                    liveSel.removeAllRanges();
+                    liveSel.addRange(nr);
+                  }
+                  studio.lastTextControl = { el: editorEl, range: nr.cloneRange() };
+                }
+              } else {
+                const frag = range.extractContents();
+                stripNestedColorSpans(frag);
+                const ms = frag.firstChild;
+                const me = frag.lastChild;
+                range.insertNode(frag);
+                if (ms && me) {
+                  const nr = document.createRange();
+                  nr.setStartBefore(ms);
+                  nr.setEndAfter(me);
+                  if (liveSel && returnFocus) {
+                    liveSel.removeAllRanges();
+                    liveSel.addRange(nr);
+                  }
+                  studio.lastTextControl = { el: editorEl, range: nr.cloneRange() };
+                }
+              }
+            }
+          } else {
+            const enclosing = findEnclosingColorSpan(range.startContainer, editorEl);
+            if (enclosing) {
+              const fc = enclosing.firstChild;
+              unwrapDomNode(enclosing);
+              if (fc) {
+                placeCaretInsideEnd(fc.nodeType === Node.TEXT_NODE ? fc.parentNode || editorEl : fc, editorEl, returnFocus);
+              }
+            } else if (editorEl.dataset.multiline !== "true") {
+              stripNestedColorSpans(editorEl);
+            }
+          }
+        } else {
+          const wrapSpanWithColor = (targetParent, textContainer) => {
+            const span = document.createElement("span");
+            span.dataset.rtColor = safeColor;
+            span.style.color = safeColor;
+            if (textContainer) {
+              span.appendChild(textContainer);
+              stripNestedColorSpans(span);
+            }
+            return span;
+          };
+
+          if (!range.collapsed) {
+            const startBlock = findEnclosingBlockLine(range.startContainer, editorEl);
+            const endBlock = findEnclosingBlockLine(range.endContainer, editorEl);
+
+            if (editorEl.dataset.multiline === "true" && startBlock && endBlock && startBlock !== endBlock) {
+              const blocks = getDirectLineBlocks(editorEl);
+              let firstColSpan = null;
+              let lastColSpan = null;
+              blocks.forEach((blk) => {
+                let hits = false;
+                try {
+                  hits = range.intersectsNode(blk);
+                } catch (_e) {
+                  hits = false;
+                }
+                if (!hits) return;
+                const blkTxt = String(blk.textContent || "").replace(/\u200B/g, "").trim();
+                if (!blkTxt) return;
+                const children = Array.from(blk.childNodes);
+                const trailingBrs = [];
+                while (
+                  children.length &&
+                  children[children.length - 1].nodeType === Node.ELEMENT_NODE &&
+                  children[children.length - 1].tagName === "BR"
+                ) {
+                  trailingBrs.unshift(children.pop());
+                }
+                const span = document.createElement("span");
+                span.dataset.rtColor = safeColor;
+                span.style.color = safeColor;
+                children.forEach((c) => span.appendChild(c));
+                stripNestedColorSpans(span);
+                blk.appendChild(span);
+                trailingBrs.forEach((br) => blk.appendChild(br));
+                if (!firstColSpan) firstColSpan = span;
+                lastColSpan = span;
+              });
+              if (firstColSpan && lastColSpan) {
+                const rAll = document.createRange();
+                rAll.setStartBefore(firstColSpan);
+                rAll.setEndAfter(lastColSpan);
+                if (returnFocus && liveSel) {
+                  liveSel.removeAllRanges();
+                  liveSel.addRange(rAll);
+                }
+                studio.lastTextControl = { el: editorEl, range: rAll.cloneRange() };
+              }
+            } else {
+              const startColor = findEnclosingColorSpan(range.startContainer, editorEl);
+              const endColor = findEnclosingColorSpan(range.endContainer, editorEl);
+              if (
+                startColor &&
+                startColor === endColor &&
+                range.toString().replace(/\u200B/g, "") === String(startColor.textContent || "").replace(/\u200B/g, "")
+              ) {
+                startColor.dataset.rtColor = safeColor;
+                startColor.style.color = safeColor;
+                selectNodeContents(startColor, editorEl, returnFocus);
+              } else {
+                const frag = range.extractContents();
+                stripNestedColorSpans(frag);
+                const span = wrapSpanWithColor(null, frag);
+                range.insertNode(span);
+                selectNodeContents(span, editorEl, returnFocus);
+              }
+            }
+          } else {
+            const enclosing = findEnclosingColorSpan(range.startContainer, editorEl);
+            if (enclosing) {
+              enclosing.dataset.rtColor = safeColor;
+              enclosing.style.color = safeColor;
+              placeCaretInsideEnd(enclosing, editorEl, returnFocus);
+            } else if (editorEl.dataset.multiline !== "true") {
+              stripNestedColorSpans(editorEl);
+              const span = document.createElement("span");
+              span.dataset.rtColor = safeColor;
+              span.style.color = safeColor;
+              if (!String(editorEl.textContent || "").replace(/\u200B/g, "").trim()) {
+                editorEl.innerHTML = "";
+                span.textContent = "\u200B";
+                editorEl.appendChild(span);
+                placeCaretInsideEnd(span, editorEl, returnFocus);
+              } else {
+                while (editorEl.firstChild) span.appendChild(editorEl.firstChild);
+                editorEl.appendChild(span);
+                selectNodeContents(span, editorEl, returnFocus);
+              }
+            } else {
+              const span = document.createElement("span");
+              span.dataset.rtColor = safeColor;
+              span.style.color = safeColor;
+              span.textContent = "\u200B";
+              range.insertNode(span);
+              placeCaretInsideEnd(span, editorEl, returnFocus);
+            }
+          }
+        }
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      if (returnFocus) {
+        positionFloatingFontBar(editorEl);
+      }
     }
 
     function toggleArticleDropCap() {
@@ -4330,6 +5207,7 @@ window.SITE_DATA = ${serialized};
 
     function openFloatingLinkRow() {
       if (!els.floatingLinkRow || !els.textLinkInput) return;
+      closeFloatingColorRow(false);
       const targetInfo =
         studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
           ? studio.lastTextControl
@@ -4553,6 +5431,42 @@ window.SITE_DATA = ${serialized};
     if (els.btnFormatStrike) {
       els.btnFormatStrike.addEventListener("click", () => toggleInlineFormat("strikeThrough"));
     }
+    if (els.btnFormatColor) {
+      els.btnFormatColor.addEventListener("click", () => {
+        if (els.floatingColorRow && !els.floatingColorRow.classList.contains("hidden")) {
+          closeFloatingColorRow(true);
+        } else {
+          openFloatingColorRow();
+        }
+      });
+    }
+    if (els.colorSwatches && els.colorSwatches.length) {
+      els.colorSwatches.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const col = btn.dataset.pickColor;
+          if (els.textColorPicker && col) els.textColorPicker.value = col;
+          applyFloatingColor(col, { returnFocus: true });
+          closeFloatingColorRow(true);
+        });
+      });
+    }
+    if (els.textColorPicker) {
+      els.textColorPicker.addEventListener("input", () => {
+        applyFloatingColor(els.textColorPicker.value, { returnFocus: false });
+      });
+      els.textColorPicker.addEventListener("change", () => {
+        applyFloatingColor(els.textColorPicker.value, { returnFocus: true });
+      });
+    }
+    if (els.btnClearTextColor) {
+      els.btnClearTextColor.addEventListener("click", () => {
+        applyFloatingColor("", { returnFocus: true });
+        closeFloatingColorRow(true);
+      });
+    }
+    if (els.btnCloseColorRow) {
+      els.btnCloseColorRow.addEventListener("click", () => closeFloatingColorRow(true));
+    }
     if (els.btnFormatLink) {
       els.btnFormatLink.addEventListener("click", () => {
         if (els.floatingLinkRow && !els.floatingLinkRow.classList.contains("hidden")) {
@@ -4567,14 +5481,61 @@ window.SITE_DATA = ${serialized};
         btn.addEventListener("click", () => applyBlockAlignment(btn.dataset.formatAlign));
       });
     }
+    if (els.btnFormatUl) {
+      els.btnFormatUl.addEventListener("click", () => toggleListType("ul"));
+    }
+    if (els.btnFormatOl) {
+      els.btnFormatOl.addEventListener("click", () => toggleListType("ol"));
+    }
     if (els.btnFormatQuote) {
       els.btnFormatQuote.addEventListener("click", toggleBlockquote);
     }
+    if (els.indentModeSelect) {
+      els.indentModeSelect.addEventListener("change", () => {
+        const mode = App.normalizeIndentMode(els.indentModeSelect.value);
+        setBlockIndent(undefined, mode, { returnFocus: true });
+      });
+    }
     if (els.btnFormatOutdent) {
-      els.btnFormatOutdent.addEventListener("click", () => adjustBlockIndent(-1));
+      els.btnFormatOutdent.addEventListener("click", () => adjustBlockIndent(-0.5));
     }
     if (els.btnFormatIndent) {
-      els.btnFormatIndent.addEventListener("click", () => adjustBlockIndent(1));
+      els.btnFormatIndent.addEventListener("click", () => adjustBlockIndent(0.5));
+    }
+    if (els.indentPreset) {
+      els.indentPreset.addEventListener("change", () => {
+        const val = els.indentPreset.value;
+        if (els.indentInput) els.indentInput.value = val;
+        const mode = els.indentModeSelect ? els.indentModeSelect.value : "all";
+        setBlockIndent(val, mode, { returnFocus: true });
+      });
+    }
+    if (els.indentInput) {
+      els.indentInput.addEventListener("input", () => {
+        const cleaned = els.indentInput.value
+          .replace(",", ".")
+          .replace(/[^0-9.]/g, "")
+          .replace(/(\..*)\./g, "$1")
+          .slice(0, 4);
+        if (els.indentInput.value !== cleaned) {
+          els.indentInput.value = cleaned;
+        }
+      });
+      els.indentInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const lv = App.normalizeIndentLevel(els.indentInput.value);
+          els.indentInput.value = String(lv);
+          const mode = els.indentModeSelect ? els.indentModeSelect.value : "all";
+          setBlockIndent(lv, mode, { returnFocus: true });
+        }
+      });
+      els.indentInput.addEventListener("change", () => {
+        const lv = App.normalizeIndentLevel(els.indentInput.value);
+        els.indentInput.value = String(lv);
+        const mode = els.indentModeSelect ? els.indentModeSelect.value : "all";
+        setBlockIndent(lv, mode, { returnFocus: false });
+      });
     }
     if (els.btnToggleDropCap) {
       els.btnToggleDropCap.addEventListener("click", toggleArticleDropCap);
@@ -4612,6 +5573,7 @@ window.SITE_DATA = ${serialized};
 
     if (els.btnClearTextFont) {
       els.btnClearTextFont.addEventListener("click", () => {
+        closeFloatingColorRow(false);
         closeFloatingLinkRow(false);
         applyFloatingStyle("clear", { returnFocus: true });
       });

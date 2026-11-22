@@ -333,15 +333,52 @@
     return "";
   }
 
+  function sanitizeRichColor(rawColor) {
+    const val = String(rawColor || "").trim();
+    if (!val) return "";
+    const hex3 = val.match(/^#([0-9a-f]{3})$/i);
+    if (hex3) {
+      const s = hex3[1].toLowerCase();
+      return `#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`;
+    }
+    const hex6 = val.match(/^#([0-9a-f]{6})$/i);
+    if (hex6) {
+      return `#${hex6[1].toLowerCase()}`;
+    }
+    const rgb = val.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)$/i);
+    if (rgb) {
+      const toHex = (n) => Math.max(0, Math.min(255, parseInt(n, 10) || 0)).toString(16).padStart(2, "0");
+      return `#${toHex(rgb[1])}${toHex(rgb[2])}${toHex(rgb[3])}`;
+    }
+    return "";
+  }
+
+  function normalizeIndentLevel(rawVal) {
+    const str = String(rawVal === undefined || rawVal === null ? "" : rawVal).replace(",", ".").trim();
+    if (!str) return 0;
+    const num = parseFloat(str);
+    if (!Number.isFinite(num) || num <= 0) return 0;
+    const clamped = Math.min(4, Math.max(0, num));
+    return Math.round(clamped * 100) / 100;
+  }
+
+  function normalizeIndentMode(rawMode) {
+    const m = String(rawMode || "").trim().toLowerCase();
+    if (m === "first" || m === "hanging") return m;
+    return "all";
+  }
+
   function stripRichTags(str) {
     return String(str || "")
       .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\]/gi, "")
       .replace(/\[\/(?:font|arab)\]/gi, "")
-      .replace(/\[(?:b|i|u|s|quote)\]/gi, "")
-      .replace(/\[\/(?:b|i|u|s|quote)\]/gi, "")
+      .replace(/\[(?:b|i|u|s|quote|ul|ol)\]/gi, "")
+      .replace(/\[\/(?:b|i|u|s|quote|ul|ol)\]/gi, "")
+      .replace(/\[color=[^\]]+\]/gi, "")
+      .replace(/\[\/color\]/gi, "")
       .replace(/\[align=(?:left|center|right|justify)\]/gi, "")
       .replace(/\[\/align\]/gi, "")
-      .replace(/\[indent=[0-4]\]/gi, "")
+      .replace(/\[indent=[0-4](?:\.\d+)?(?:\s+mode=(?:all|first|hanging))?\]/gi, "")
       .replace(/\[\/indent\]/gi, "")
       .replace(/<\/?blockquote[^>]*>/gi, "")
       .replace(/\[url=[^\]]+\]/gi, "")
@@ -351,14 +388,20 @@
   function parseRichBlockMeta(rawBlock) {
     let text = String(rawBlock || "").trim();
     let isQuote = false;
+    let listType = "";
     let align = "";
     let indent = 0;
+    let indentMode = "all";
     let changed = true;
 
     while (changed && text) {
       changed = false;
       let m;
-      if ((m = text.match(/^\[quote\]([\s\S]*)\[\/quote\]$/i))) {
+      if ((m = text.match(/^\[(ul|ol)\]([\s\S]*)\[\/\1\]$/i))) {
+        if (!listType) listType = m[1].toLowerCase();
+        text = m[2].trim();
+        changed = true;
+      } else if ((m = text.match(/^\[quote\]([\s\S]*)\[\/quote\]$/i))) {
         isQuote = true;
         text = m[1].trim();
         changed = true;
@@ -370,25 +413,37 @@
         if (!align) align = m[1].toLowerCase();
         text = m[2].trim();
         changed = true;
-      } else if ((m = text.match(/^\[indent=([1-4])\]([\s\S]*)\[\/indent\]$/i))) {
-        if (!indent) indent = Math.min(4, Math.max(1, parseInt(m[1], 10) || 0));
-        text = m[2].trim();
+      } else if ((m = text.match(/^\[indent=([0-4](?:\.\d+)?)(?:\s+mode=(all|first|hanging))?\]([\s\S]*)\[\/indent\]$/i))) {
+        if (!indent) {
+          indent = normalizeIndentLevel(m[1]);
+          indentMode = normalizeIndentMode(m[2]);
+        }
+        text = m[3].trim();
         changed = true;
       }
     }
 
     return {
       isQuote,
+      listType,
       align,
       indent,
+      indentMode,
       inner: text,
     };
+  }
+
+  function buildRichBlockStyle(meta) {
+    const m = meta || {};
+    const indent = normalizeIndentLevel(m.indent);
+    if (indent <= 0) return "";
+    return `--ct-indent-lv: ${indent};`;
   }
 
   function buildRichBlockClasses(meta, dir, isFirstNormalCandidate, dropCapEnabled) {
     const classes = [];
     const m = meta || {};
-    if (m.isQuote) {
+    if (m.isQuote && !m.listType) {
       classes.push("ct-blockquote");
     }
     if (m.align && ["left", "center", "right", "justify"].includes(m.align)) {
@@ -396,13 +451,25 @@
     } else if (dir === "rtl") {
       classes.push("text-right", "leading-[2.15]");
     }
-    if (m.indent >= 1 && m.indent <= 4) {
-      classes.push(`ct-indent-${m.indent}`);
+    const indent = normalizeIndentLevel(m.indent);
+    const indentMode = normalizeIndentMode(m.indentMode);
+    if (indent > 0) {
+      if (indentMode === "first") {
+        classes.push("ct-indent-first");
+      } else if (indentMode === "hanging") {
+        classes.push("ct-indent-hanging");
+      } else {
+        classes.push("ct-indent");
+        if (Number.isInteger(indent) && indent >= 1 && indent <= 4) {
+          classes.push(`ct-indent-${indent}`);
+        }
+      }
     }
     const allowDropCap =
       Boolean(dropCapEnabled) &&
       Boolean(isFirstNormalCandidate) &&
       !m.isQuote &&
+      !m.listType &&
       dir !== "rtl" &&
       m.align !== "center" &&
       m.align !== "right";
@@ -449,14 +516,15 @@
     const rawStr = String(rawText || "");
     if (!rawStr) return "";
     const outerMeta = parseRichBlockMeta(rawStr);
-    const hasOuterBlock = outerMeta.isQuote || Boolean(outerMeta.align) || outerMeta.indent > 0;
+    const hasOuterBlock =
+      outerMeta.isQuote || Boolean(outerMeta.listType) || Boolean(outerMeta.align) || outerMeta.indent > 0;
     const input = hasOuterBlock ? outerMeta.inner : rawStr;
     if (!input && !hasOuterBlock) return "";
 
     const fonts = getFontCollection(siteData || state.currentData || window.SITE_DATA || {});
     const fontMap = new Map(fonts.map((f) => [f.id, f]));
     const tagRegex =
-      /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
+      /\[(font|arab)(?:=([a-z0-9-]+))?(?:\s+size=(\d{1,3}))?\]([\s\S]*?)\[\/\1\]|\[(b|i|u|s)\]([\s\S]*?)\[\/\5\]|\[color=(#[0-9a-f]{3,6})\]([\s\S]*?)\[\/color\]|\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi;
 
     let result = "";
     let lastIndex = 0;
@@ -481,9 +549,17 @@
           result += `<s class="line-through">${innerHtml}</s>`;
         }
       } else if (match[7] !== undefined) {
-        const decodedUrl = String(match[7] || "").replace(/%5D/gi, "]");
-        const safeUrl = sanitizeRichLinkUrl(decodedUrl);
+        const safeColor = sanitizeRichColor(match[7]);
         const innerHtml = formatRichInlineHtml(match[8] || "", siteData);
+        if (safeColor) {
+          result += `<span style="color: ${escapeHtml(safeColor)};">${innerHtml}</span>`;
+        } else {
+          result += innerHtml;
+        }
+      } else if (match[9] !== undefined) {
+        const decodedUrl = String(match[9] || "").replace(/%5D/gi, "]");
+        const safeUrl = sanitizeRichLinkUrl(decodedUrl);
+        const innerHtml = formatRichInlineHtml(match[10] || "", siteData);
         if (safeUrl) {
           result += `<a href="${escapeHtml(
             safeUrl
@@ -541,9 +617,15 @@
     if (hasOuterBlock) {
       const dir = detectTextDirection(input);
       const cls = buildRichBlockClasses(outerMeta, dir, false, false);
+      const styleStr = buildRichBlockStyle(outerMeta);
+      const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
+      if (outerMeta.listType === "ul" || outerMeta.listType === "ol") {
+        const listTag = outerMeta.listType;
+        return `<${listTag} dir="${dir}" class="ct-list ct-list-${listTag}"><li dir="${dir}"${cls ? ` class="${cls}"` : ""}${styleAttr}>${result}</li></${listTag}>`;
+      }
       const wrapTag = outerMeta.isQuote ? "blockquote" : "span";
       const extraBlockCls = outerMeta.isQuote ? "" : "block ";
-      return `<${wrapTag} dir="${dir}" class="${extraBlockCls}${cls}">${result}</${wrapTag}>`;
+      return `<${wrapTag} dir="${dir}" class="${extraBlockCls}${cls}"${styleAttr}>${result}</${wrapTag}>`;
     }
 
     return result;
@@ -553,7 +635,7 @@
     let out = String(rawText || "");
     for (let pass = 0; pass < 3; pass += 1) {
       const next = out.replace(
-        /\[(quote|align|indent|font|arab|b|i|u|s|url)((?:=[^\]]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
+        /\[(ul|ol|quote|align|indent|font|arab|color|b|i|u|s|url)((?:=[^\]]+)?(?:\s+(?:size=\d{1,3}|mode=(?:all|first|hanging)))?)\]([\s\S]*?)\[\/\1\]/gi,
         (_full, tag, attrs, inner) => {
           if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
           return inner
@@ -568,6 +650,69 @@
     return out;
   }
 
+  function renderParsedRichLines(parsedLines, siteData, options) {
+    const opts = options || {};
+    const isArticle = Boolean(opts.isArticle);
+    const isFirstParagraph = Boolean(opts.isFirstParagraph);
+    const dropCapEnabled = Boolean(opts.dropCapEnabled);
+    let olRunIndex = Number(opts.olStartOffset || 0);
+
+    const htmlParts = [];
+    let i = 0;
+    while (i < parsedLines.length) {
+      const item = parsedLines[i];
+      if (item.listType === "ul" || item.listType === "ol") {
+        const listTag = item.listType;
+        const listItems = [];
+        const startNum = listTag === "ol" ? olRunIndex + 1 : 0;
+        while (i < parsedLines.length && parsedLines[i].listType === listTag) {
+          const liMeta = parsedLines[i];
+          const liDir = detectTextDirection(liMeta.inner);
+          const liCls = buildRichBlockClasses(liMeta, liDir, false, false);
+          const liStyle = buildRichBlockStyle(liMeta);
+          const liStyleAttr = liStyle ? ` style="${escapeHtml(liStyle)}"` : "";
+          const liInline = formatRichInlineHtml(liMeta.inner, siteData);
+          listItems.push(
+            `<li dir="${liDir}"${liCls ? ` class="${liCls}"` : ""}${liStyleAttr}>${liInline}</li>`
+          );
+          if (listTag === "ol") olRunIndex += 1;
+          i += 1;
+        }
+        const firstListDir = detectTextDirection(item.inner);
+        const startAttr = listTag === "ol" && startNum > 1 ? ` start="${startNum}"` : "";
+        htmlParts.push(
+          `<${listTag} dir="${firstListDir}"${startAttr} class="ct-list ct-list-${listTag}">${listItems.join("")}</${listTag}>`
+        );
+        continue;
+      }
+
+      olRunIndex = 0;
+      const lineDir = detectTextDirection(item.inner);
+      const cls = buildRichBlockClasses(
+        item,
+        lineDir,
+        isFirstParagraph && i === 0,
+        dropCapEnabled
+      );
+      const styleStr = buildRichBlockStyle(item);
+      const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
+      const inlineHtml = formatRichInlineHtml(item.inner, siteData);
+      if (item.isQuote) {
+        htmlParts.push(`<blockquote dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</blockquote>`);
+      } else if (isArticle) {
+        htmlParts.push(`<p dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</p>`);
+      } else {
+        htmlParts.push(`<span dir="${lineDir}" class="block ${cls}"${styleAttr}>${inlineHtml}</span>`);
+      }
+      i += 1;
+    }
+
+    return {
+      html: htmlParts.join(""),
+      trailingOlCount: olRunIndex,
+    };
+  }
+
   function formatRichLinesHtml(rawText, siteData) {
     const normalized = distributeMultilineRichTags(rawText);
     const lines = normalized.split(/\r?\n+/).filter((line) => line !== "");
@@ -575,18 +720,8 @@
       const single = lines[0] !== undefined ? lines[0] : normalized;
       return formatRichInlineHtml(single, siteData);
     }
-    return lines
-      .map((line) => {
-        const meta = parseRichBlockMeta(line);
-        const dir = detectTextDirection(meta.inner);
-        const cls = buildRichBlockClasses(meta, dir, false, false);
-        const inlineHtml = formatRichInlineHtml(meta.inner, siteData);
-        if (meta.isQuote) {
-          return `<blockquote dir="${dir}" class="${cls}">${inlineHtml}</blockquote>`;
-        }
-        return `<span dir="${dir}" class="block ${cls}">${inlineHtml}</span>`;
-      })
-      .join("");
+    const parsedLines = lines.map((l) => parseRichBlockMeta(l));
+    return renderParsedRichLines(parsedLines, siteData, { isArticle: false }).html;
   }
 
   function formatIndex(idx) {
@@ -2075,24 +2210,39 @@
 
     const paragraphs = Array.isArray(item.isi) ? item.isi : [item.ringkasan];
     const dropCapEnabled = item.dropCap !== false;
+    let olOffset = 0;
     modalEls.articleBody.innerHTML = paragraphs
       .map((p, idx) => {
         const rawLines = distributeMultilineRichTags(p)
           .split(/\r?\n+/)
           .filter((l) => l !== "");
         const parsedLines = (rawLines.length ? rawLines : [p]).map((l) => parseRichBlockMeta(l));
-        const firstMeta = parsedLines[0] || { isQuote: false, align: "", indent: 0, inner: "" };
-        const allSameBlock = parsedLines.every(
-          (pl) =>
-            pl.isQuote === firstMeta.isQuote &&
-            pl.align === firstMeta.align &&
-            pl.indent === firstMeta.indent
-        );
+        const hasLists = parsedLines.some((pl) => pl.listType === "ul" || pl.listType === "ol");
+        const firstMeta = parsedLines[0] || {
+          isQuote: false,
+          listType: "",
+          align: "",
+          indent: 0,
+          indentMode: "all",
+          inner: "",
+        };
+        const allSameBlock =
+          !hasLists &&
+          parsedLines.every(
+            (pl) =>
+              pl.isQuote === firstMeta.isQuote &&
+              pl.align === firstMeta.align &&
+              pl.indent === firstMeta.indent &&
+              pl.indentMode === firstMeta.indentMode
+          );
 
         if (allSameBlock) {
+          olOffset = 0;
           const combinedInner = parsedLines.map((pl) => pl.inner).join("\n");
           const pDir = detectTextDirection(combinedInner);
           const cls = buildRichBlockClasses(firstMeta, pDir, idx === 0, dropCapEnabled);
+          const styleStr = buildRichBlockStyle(firstMeta);
+          const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
           const renderedInner =
             parsedLines.length > 1
               ? parsedLines
@@ -2104,27 +2254,19 @@
               : formatRichInlineHtml(firstMeta.inner, src);
 
           if (firstMeta.isQuote) {
-            return `<blockquote dir="${pDir}" class="${cls}">${renderedInner}</blockquote>`;
+            return `<blockquote dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</blockquote>`;
           }
-          return `<p dir="${pDir}" class="${cls}">${renderedInner}</p>`;
+          return `<p dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</p>`;
         }
 
-        return parsedLines
-          .map((pl, lineIdx) => {
-            const lineDir = detectTextDirection(pl.inner);
-            const cls = buildRichBlockClasses(
-              pl,
-              lineDir,
-              idx === 0 && lineIdx === 0,
-              dropCapEnabled
-            );
-            const inlineHtml = formatRichInlineHtml(pl.inner, src);
-            if (pl.isQuote) {
-              return `<blockquote dir="${lineDir}" class="${cls}">${inlineHtml}</blockquote>`;
-            }
-            return `<p dir="${lineDir}" class="${cls}">${inlineHtml}</p>`;
-          })
-          .join("");
+        const renderedBlock = renderParsedRichLines(parsedLines, src, {
+          isArticle: true,
+          isFirstParagraph: idx === 0,
+          dropCapEnabled,
+          olStartOffset: olOffset,
+        });
+        olOffset = renderedBlock.trailingOlCount;
+        return renderedBlock.html;
       })
       .join("");
 
@@ -2593,8 +2735,12 @@
     deepClone,
     escapeHtml,
     sanitizeRichLinkUrl,
+    sanitizeRichColor,
+    normalizeIndentLevel,
+    normalizeIndentMode,
     stripRichTags,
     parseRichBlockMeta,
+    buildRichBlockStyle,
     buildRichBlockClasses,
     resolveR2FontUrl,
     getFontCollection,

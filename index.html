@@ -142,6 +142,9 @@
         color: var(--accent-text);
         font-weight: 500;
       }
+      .prose-dropcap.ct-indent-first {
+        text-indent: 0;
+      }
 
       .no-scrollbar::-webkit-scrollbar {
         display: none;
@@ -247,8 +250,35 @@
       }
       .ct-editor-article-prose > div,
       .ct-editor-article-prose > p,
-      .ct-editor-article-prose > blockquote {
+      .ct-editor-article-prose > blockquote,
+      .ct-editor-article-prose > ul,
+      .ct-editor-article-prose > ol {
         margin-bottom: 0.45rem;
+      }
+
+      /* Daftar Bullet & Numbering (Identik di Editor & Halaman Baca) */
+      .ct-list,
+      .ct-rich-editor ul,
+      .ct-rich-editor ol {
+        margin: 0.45rem 0;
+        padding-inline-start: 1.45rem;
+      }
+      .ct-list-ul,
+      .ct-rich-editor ul {
+        list-style-type: disc;
+      }
+      .ct-list-ol,
+      .ct-rich-editor ol {
+        list-style-type: decimal;
+      }
+      .ct-list li,
+      .ct-rich-editor li {
+        margin-bottom: 0.28rem;
+        line-height: 1.75;
+      }
+      .ct-list li:last-child,
+      .ct-rich-editor li:last-child {
+        margin-bottom: 0;
       }
 
       /* Blockquote, Perataan & Indentasi WYSIWYG (Identik di Editor & Halaman Baca) */
@@ -291,38 +321,54 @@
         text-align: justify !important;
       }
 
-      .ct-indent-1 {
-        padding-inline-start: clamp(0.95rem, 3vw, 1.5rem);
+      /* Indentasi Fleksibel (0.5 - 4 tingkat) + Mode Semua / Baris Pertama / Baris 2+ */
+      .ct-indent,
+      .ct-indent-first,
+      .ct-indent-hanging {
+        --ct-indent-unit: clamp(0.95rem, 3vw, 1.5rem);
       }
-      .ct-indent-2 {
-        padding-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 2);
+      .ct-indent {
+        padding-inline-start: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
       }
-      .ct-indent-3 {
-        padding-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 3);
+      .ct-indent-first {
+        text-indent: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
       }
-      .ct-indent-4 {
-        padding-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 4);
+      .ct-indent-hanging {
+        padding-inline-start: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
+        text-indent: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0) * -1);
       }
 
-      blockquote.ct-indent-1,
-      .ct-blockquote.ct-indent-1 {
-        padding-inline-start: 1.15rem;
-        margin-inline-start: clamp(0.95rem, 3vw, 1.5rem);
+      .ct-indent-1 {
+        --ct-indent-lv: 1;
       }
-      blockquote.ct-indent-2,
-      .ct-blockquote.ct-indent-2 {
-        padding-inline-start: 1.15rem;
-        margin-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 2);
+      .ct-indent-2 {
+        --ct-indent-lv: 2;
       }
-      blockquote.ct-indent-3,
-      .ct-blockquote.ct-indent-3 {
-        padding-inline-start: 1.15rem;
-        margin-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 3);
+      .ct-indent-3 {
+        --ct-indent-lv: 3;
       }
-      blockquote.ct-indent-4,
-      .ct-blockquote.ct-indent-4 {
+      .ct-indent-4 {
+        --ct-indent-lv: 4;
+      }
+
+      blockquote.ct-indent,
+      .ct-blockquote.ct-indent {
         padding-inline-start: 1.15rem;
-        margin-inline-start: calc(clamp(0.95rem, 3vw, 1.5rem) * 4);
+        margin-inline-start: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
+      }
+      blockquote.ct-indent-first,
+      .ct-blockquote.ct-indent-first {
+        padding-inline-start: 1.15rem;
+        text-indent: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
+      }
+      blockquote.ct-indent-hanging,
+      .ct-blockquote.ct-indent-hanging {
+        padding-inline-start: calc(1.15rem + var(--ct-indent-unit) * var(--ct-indent-lv, 0));
+        text-indent: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0) * -1);
+      }
+      li.ct-indent {
+        padding-inline-start: 0;
+        margin-inline-start: calc(var(--ct-indent-unit) * var(--ct-indent-lv, 0));
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -537,7 +583,7 @@
                 </div>
               </div>
 
-              <!-- 3. Gaya Teks (B / I / U / Coret) & Tautan -->
+              <!-- 3. Gaya Teks (B / I / U / Coret / Warna / Tautan) -->
               <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
                 <button
                   type="button"
@@ -574,6 +620,18 @@
                   class="h-8 w-7 inline-flex items-center justify-center line-through text-gray-700 hover:bg-stone-100 border-r border-stone-100 transition-colors"
                 >
                   S
+                </button>
+                <button
+                  type="button"
+                  id="btn-format-color"
+                  title="Warna Teks"
+                  aria-label="Warna Teks"
+                  aria-pressed="false"
+                  aria-expanded="false"
+                  class="h-8 w-7 inline-flex flex-col items-center justify-center text-gray-700 hover:bg-stone-100 border-r border-stone-100 transition-colors"
+                >
+                  <span class="font-semibold text-[11px] leading-none">A</span>
+                  <span id="btn-format-color-bar" class="w-3.5 h-[3px] rounded-full mt-0.5 bg-gray-800"></span>
                 </button>
                 <button
                   type="button"
@@ -645,8 +703,40 @@
                 </button>
               </div>
 
-              <!-- 5. Blockquote & Indentasi -->
-              <div class="inline-flex items-center shrink-0 border-r border-stone-200 bg-white">
+              <!-- 5. Bullet & Numbering -->
+              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
+                <button
+                  type="button"
+                  id="btn-format-ul"
+                  title="Daftar Poin (Bullet List)"
+                  aria-label="Daftar Poin"
+                  aria-pressed="false"
+                  class="h-8 w-7 inline-flex items-center justify-center text-gray-700 hover:bg-stone-100 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent border-r border-stone-100 transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="5" cy="7" r="1.25" fill="currentColor" stroke="none" />
+                    <circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none" />
+                    <circle cx="5" cy="17" r="1.25" fill="currentColor" stroke="none" />
+                    <path stroke-linecap="round" stroke-width="2" d="M9 7h11M9 12h11M9 17h11" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  id="btn-format-ol"
+                  title="Daftar Bernomor (Numbering)"
+                  aria-label="Daftar Bernomor"
+                  aria-pressed="false"
+                  class="h-8 w-7 inline-flex items-center justify-center text-gray-700 hover:bg-stone-100 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6h1.5v4M4 10h2.5M4 14.5a1 1 0 012 0c0 .75-2 1.5-2 2.5h2" />
+                    <path stroke-linecap="round" stroke-width="2" d="M10 7h10M10 12h10M10 17h10" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- 6. Blockquote & Indentasi Fleksibel (0.5 - 4 tingkat + Mode Baris) -->
+              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
                 <button
                   type="button"
                   id="btn-format-quote"
@@ -659,10 +749,20 @@
                     <path d="M9.983 3v7.391c0 5.704-3.731 9.57-8.983 10.609l-.995-2.151c2.432-.917 3.995-3.638 3.995-5.849h-4v-10h9.983zm14.017 0v7.391c0 5.704-3.748 9.571-9 10.609l-.996-2.151c2.433-.917 3.996-3.638 3.996-5.849h-3.983v-10h9.983z" />
                   </svg>
                 </button>
+                <select
+                  id="studio-indent-mode-select"
+                  aria-label="Mode indentasi paragraf"
+                  title="Pilih bagian yang digeser: Semua baris, Baris pertama saja, atau Baris ke-2 dst (Gantung)"
+                  class="h-8 pl-1.5 pr-4 text-[11px] font-medium text-gray-700 bg-white border-r border-stone-100 focus:outline-none focus:bg-emerald-50/40"
+                >
+                  <option value="all">Semua</option>
+                  <option value="first">Baris 1</option>
+                  <option value="hanging">Baris 2+</option>
+                </select>
                 <button
                   type="button"
                   id="btn-format-outdent"
-                  title="Kurangi Indentasi"
+                  title="Kurangi Indentasi (-0.5 tingkat)"
                   aria-label="Kurangi Indentasi"
                   class="h-8 w-7 inline-flex items-center justify-center text-gray-700 hover:bg-stone-100 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent border-r border-stone-100 transition-colors"
                 >
@@ -670,10 +770,39 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 6h9M11 10h9M11 14h9M4 18h16M7 8l-4 4 4 4" />
                   </svg>
                 </button>
+                <div class="relative flex items-center bg-white border-r border-stone-100" title="Tingkat indentasi (0 – 4, bisa 0.5, 1, 1.5, dst)">
+                  <input
+                    type="text"
+                    id="studio-indent-input"
+                    inputmode="decimal"
+                    placeholder="0"
+                    aria-label="Tingkat indentasi (0 sampai 4)"
+                    class="h-8 w-[48px] pl-1 pr-3.5 text-[11px] font-medium text-center text-gray-800 bg-transparent focus:outline-none focus:bg-emerald-50/40"
+                  />
+                  <select
+                    id="studio-indent-preset"
+                    aria-label="Pilih tingkat indentasi cepat"
+                    title="Pilih tingkat indentasi (0 – 4)"
+                    class="absolute right-0 top-0 bottom-0 w-4 opacity-0 cursor-pointer"
+                  >
+                    <option value="0">0</option>
+                    <option value="0.5">0.5</option>
+                    <option value="1">1</option>
+                    <option value="1.5">1.5</option>
+                    <option value="2">2</option>
+                    <option value="2.5">2.5</option>
+                    <option value="3">3</option>
+                    <option value="3.5">3.5</option>
+                    <option value="4">4</option>
+                  </select>
+                  <svg class="w-2.5 h-2.5 text-gray-500 pointer-events-none absolute right-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
                 <button
                   type="button"
                   id="btn-format-indent"
-                  title="Tambah Indentasi (maks. 4 tingkat)"
+                  title="Tambah Indentasi (+0.5 tingkat, maks. 4)"
                   aria-label="Tambah Indentasi"
                   class="h-8 w-7 inline-flex items-center justify-center text-gray-700 hover:bg-stone-100 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
                 >
@@ -683,7 +812,7 @@
                 </button>
               </div>
 
-              <!-- 6. Toggle Drop Cap (+ Arab & Reset) -->
+              <!-- 7. Toggle Drop Cap (+ Arab & Reset) -->
               <div class="inline-flex items-center shrink-0 bg-white">
                 <button
                   type="button"
@@ -707,10 +836,38 @@
                 <button
                   type="button"
                   id="btn-clear-text-font"
-                  title="Hapus pengaturan font, ukuran &amp; gaya teks"
+                  title="Hapus pengaturan font, ukuran, warna &amp; gaya teks"
                   class="h-8 px-2 text-[11px] font-medium text-gray-500 hover:text-red-700 hover:bg-red-50 transition-colors whitespace-nowrap"
                 >
                   Reset
+                </button>
+              </div>
+            </div>
+
+            <!-- Baris Palet Warna Teks Kontekstual -->
+            <div id="studio-floating-color-row" class="hidden flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-stone-50 border-t border-stone-200">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" data-pick-color="#1f2937" title="Hitam Tinta (#1f2937)" aria-label="Hitam Tinta" class="w-5 h-5 rounded-full border border-stone-300 hover:scale-110 transition-transform" style="background-color: #1f2937;"></button>
+                <button type="button" data-pick-color="#047857" title="Hijau Zamrud (#047857)" aria-label="Hijau Zamrud" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #047857;"></button>
+                <button type="button" data-pick-color="#0f766e" title="Teal Teduh (#0f766e)" aria-label="Teal Teduh" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #0f766e;"></button>
+                <button type="button" data-pick-color="#0369a1" title="Biru Teduh (#0369a1)" aria-label="Biru Teduh" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #0369a1;"></button>
+                <button type="button" data-pick-color="#3730a3" title="Indigo (#3730a3)" aria-label="Indigo" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #3730a3;"></button>
+                <button type="button" data-pick-color="#6b21a8" title="Ungu Plum (#6b21a8)" aria-label="Ungu Plum" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #6b21a8;"></button>
+                <button type="button" data-pick-color="#92400e" title="Kayu Hangat (#92400e)" aria-label="Kayu Hangat" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #92400e;"></button>
+                <button type="button" data-pick-color="#a16207" title="Emas Tua (#a16207)" aria-label="Emas Tua" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #a16207;"></button>
+                <button type="button" data-pick-color="#b91c1c" title="Merah Bata (#b91c1c)" aria-label="Merah Bata" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #b91c1c;"></button>
+                <button type="button" data-pick-color="#4b5563" title="Abu Redup (#4b5563)" aria-label="Abu Redup" class="w-5 h-5 rounded-full border border-black/15 hover:scale-110 transition-transform" style="background-color: #4b5563;"></button>
+                <label class="inline-flex items-center gap-1 pl-1 text-[11px] font-medium text-gray-600 cursor-pointer" title="Pilih warna bebas">
+                  <input type="color" id="studio-text-color-picker" value="#047857" aria-label="Pilih warna kustom" class="w-5 h-5 p-0 border border-stone-300 rounded cursor-pointer bg-white" />
+                  <span>Lainnya</span>
+                </label>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button type="button" id="btn-clear-text-color" class="h-6 px-2 text-[11px] font-medium text-gray-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-md transition-colors whitespace-nowrap">
+                  Default
+                </button>
+                <button type="button" id="btn-close-color-row" class="h-6 px-2 text-[11px] font-medium text-gray-500 hover:bg-stone-200/70 rounded-md transition-colors whitespace-nowrap">
+                  Tutup
                 </button>
               </div>
             </div>
