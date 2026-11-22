@@ -141,8 +141,8 @@
     "kicker": "Ruang Berbagi Ilmu",
     "judulUtama": "Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang",
     "subjudul": "— ruang berbagi ilmu & nasihat kehidupan —",
-    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini kami berusaha menghimpun ilmu yang bersumber dari para ahli ilmu (Ulama, Asatidz, Guru dan Kiyai) dalam bentuk catatan, ebook, pengingat visual, audio, serta video  yang dapat diakses siapa saja secara bebas.",
-    "namaPemilik": "Ibnu Ya'qub Ndalu",
+    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini kami berusaha menghimpun catatan dan ilmu-ilmu warisan para ulama, buku digital, pengingat visual, audio, serta video  yang dapat diakses siapa saja secara bebas.",
+    "namaPemilik": "Ibnu Yaqub Ndalu",
     "emailAdmin": "benyaqub@gmail.com",
     "tahunHakCipta": "2026"
   },
@@ -220,7 +220,41 @@
       "namaFileUnduh": "Kompas-Langkah-Sederhana.pdf"
     }
   ],
-  "flyer": [],
-  "audio": [],
+  "flyer": [
+    {
+      "id": "flyer-1",
+      "status": "published",
+      "judul": "Tenang Seperti Air di Pagi Hari",
+      "tema": "Kesabaran",
+      "tanggal": "12 November 2026",
+      "gambar": "/src/assets/images/flyer_sabar_1795070324398.jpg",
+      "nasihat": "Jangan tergesa-gesa menilai sebuah ujian sebagai akhir dari jalan. Sebagaimana kabut pagi yang perlahan tersingkap, hikmah selalu datang bersama kesabaran yang tenang.",
+      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg"
+    },
+    {
+      "id": "flyer-2",
+      "status": "published",
+      "judul": "Cukupkan Hati dengan Syukur",
+      "tema": "Rasa Syukur",
+      "tanggal": "05 November 2026",
+      "gambar": "/src/assets/images/flyer_syukur_1795070324787.jpg",
+      "nasihat": "Kekayaan sejati bukan diukur dari seberapa banyak yang kita kumpulkan, melainkan seberapa tenang hati kita mensyukuri apa yang hari ini sudah ada di genggaman.",
+      "namaFileUnduh": "Flyer-Nasihat-Syukur.jpg"
+    }
+  ],
+  "audio": [
+    {
+      "id": "audio-1",
+      "status": "trash",
+      "judul": "Berbaik Sangka pada Ketentuan yang Tertunda",
+      "seri": "Siniar Jeda · Eps. 01",
+      "tanggal": "10 November 2026",
+      "durasi": "00:12",
+      "ringkasan": "Renungan suara singkat tentang bagaimana menyikapi doa dan harapan yang belum terwujud sesuai waktu yang kita inginkan.",
+      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-berbaik-sangka.mp3",
+      "previousStatus": "published",
+      "deletedAt": "2026-11-21T11:42:05.736Z"
+    }
+  ],
   "video": []
 }
