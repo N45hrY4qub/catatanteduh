@@ -949,8 +949,6 @@
                 <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
                 <span aria-hidden="true">·</span>
                 <span>${escapeHtml(item.tanggal)}</span>
-                <span aria-hidden="true">·</span>
-                <span class="tabular-nums">${escapeHtml(item.waktuBaca)}</span>
                 ${buildDraftBadge(item)}
               </div>
               <span class="font-theme-display text-sm text-stone-400 tabular-nums shrink-0">${formatIndex(idx)}</span>
@@ -1724,7 +1722,7 @@
           </div>
           <div class="relative space-y-4">
             <div class="flex items-center justify-between gap-3">
-              <span class="text-xs text-gray-500">Oleh ${escapeHtml(p.namaPemilik || "Penulis")} · ${escapeHtml(featuredArticle.waktuBaca)}</span>
+              <span class="text-xs text-gray-500">Oleh ${escapeHtml(p.namaPemilik || "Penulis")}</span>
               <button
                 type="button"
                 data-read-article="${escapeHtml(featuredArticle.id)}"
@@ -1853,11 +1851,9 @@
 
     state.activeArticle = item;
     modalEls.articleMeta.innerHTML = `
-      <span class="font-semibold theme-text-accent">${escapeHtml(item.kategori)}</span>
+      <span class="font-semibold theme-text-accent">${escapeHtml(getItemCategory(item, "tulisan"))}</span>
       <span aria-hidden="true">·</span>
       <span>${escapeHtml(item.tanggal)}</span>
-      <span aria-hidden="true">·</span>
-      <span class="tabular-nums">${escapeHtml(item.waktuBaca)}</span>
     `;
     const titleDir = detectTextDirection(item.judul);
     modalEls.articleTitle.setAttribute("dir", titleDir);

@@ -287,6 +287,82 @@ window.SITE_DATA = ${serialized};
   // --------------------------------------------------------------------------
   // Pengolah Form Item Konten & Render Halaman Pratinjau Terpisah
   // --------------------------------------------------------------------------
+  const ID_MONTHS_LONG = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
+
+  const MONTH_NAME_TO_INDEX = {
+    januari: 1, jan: 1, january: 1,
+    februari: 2, feb: 2, peb: 2, february: 2,
+    maret: 3, mar: 3, march: 3,
+    april: 4, apr: 4,
+    mei: 5, may: 5,
+    juni: 6, jun: 6, june: 6,
+    juli: 7, jul: 7, july: 7,
+    agustus: 8, agu: 8, ags: 8, aug: 8, august: 8,
+    september: 9, sep: 9, sept: 9,
+    oktober: 10, okt: 10, oct: 10, october: 10,
+    november: 11, nov: 11, nop: 11,
+    desember: 12, des: 12, dec: 12, december: 12,
+  };
+
+  function getTodayIsoDate() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function parseIndonesianDateToIso(rawDate) {
+    const val = String(rawDate || "").trim();
+    if (!val) return getTodayIsoDate();
+
+    const isoMatch = val.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+    }
+
+    const slashMatch = val.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (slashMatch) {
+      return `${slashMatch[3]}-${slashMatch[2].padStart(2, "0")}-${slashMatch[1].padStart(2, "0")}`;
+    }
+
+    const textMatch = val.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+    if (textMatch) {
+      const mIdx = MONTH_NAME_TO_INDEX[textMatch[2].toLowerCase()];
+      if (mIdx) {
+        return `${textMatch[3]}-${String(mIdx).padStart(2, "0")}-${textMatch[1].padStart(2, "0")}`;
+      }
+    }
+
+    return getTodayIsoDate();
+  }
+
+  function formatIsoDateToIndonesian(rawVal) {
+    const val = String(rawVal || "").trim();
+    if (!val) return formatIsoDateToIndonesian(getTodayIsoDate());
+    const isoMatch = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!isoMatch) return val;
+    const year = isoMatch[1];
+    const monthIdx = parseInt(isoMatch[2], 10) - 1;
+    const day = isoMatch[3];
+    const monthName = ID_MONTHS_LONG[monthIdx];
+    if (!monthName) return val;
+    return `${day} ${monthName} ${year}`;
+  }
+
   function resolveKategoriFromForm(formData) {
     const sel = String(formData.get("kategori") || "").trim();
     if (sel === "__custom__") {
@@ -298,6 +374,7 @@ window.SITE_DATA = ${serialized};
   function extractContentItemFromForm(type, formData, itemId) {
     let newItem = { id: itemId, status: formData.get("status") || "published" };
     const kategori = resolveKategoriFromForm(formData);
+    const formattedTanggal = formatIsoDateToIndonesian(formData.get("tanggal"));
 
     if (type === "tulisan") {
       const paragraphs = String(formData.get("isi") || "")
@@ -308,8 +385,7 @@ window.SITE_DATA = ${serialized};
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
         kategori,
-        waktuBaca: String(formData.get("waktuBaca") || "3 menit baca").trim(),
-        tanggal: String(formData.get("tanggal") || "").trim(),
+        tanggal: formattedTanggal,
         ringkasan: String(formData.get("ringkasan") || "").trim(),
         isi: paragraphs,
       };
@@ -333,7 +409,7 @@ window.SITE_DATA = ${serialized};
         judul: String(formData.get("judul") || "").trim(),
         kategori,
         tema: String(formData.get("tema") || "").trim(),
-        tanggal: String(formData.get("tanggal") || "").trim(),
+        tanggal: formattedTanggal,
         gambar: String(formData.get("gambar") || "").trim(),
         nasihat: String(formData.get("nasihat") || "").trim(),
         namaFileUnduh: `${sanitizeFilename(formData.get("judul") || "flyer")}.jpg`,
@@ -345,7 +421,7 @@ window.SITE_DATA = ${serialized};
         kategori,
         seri: String(formData.get("seri") || "").trim(),
         durasi: String(formData.get("durasi") || "").trim(),
-        tanggal: String(formData.get("tanggal") || "").trim(),
+        tanggal: formattedTanggal,
         audioUrl: String(formData.get("audioUrl") || "").trim(),
         ringkasan: String(formData.get("ringkasan") || "").trim(),
       };
@@ -356,7 +432,7 @@ window.SITE_DATA = ${serialized};
         youtubeId: extractYoutubeId(formData.get("youtubeId")),
         kategori,
         durasi: String(formData.get("durasi") || "").trim(),
-        tanggal: String(formData.get("tanggal") || "").trim(),
+        tanggal: formattedTanggal,
         ringkasan: String(formData.get("ringkasan") || "").trim(),
       };
     }
@@ -1600,10 +1676,25 @@ window.SITE_DATA = ${serialized};
     `;
   }
 
+  function renderDatePickerFieldHtml(rawTanggal) {
+    const isoVal = parseIndonesianDateToIso(rawTanggal);
+    return `
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
+        <input
+          type="date"
+          name="tanggal"
+          data-date-picker="true"
+          value="${App.escapeHtml(isoVal)}"
+          class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm bg-white cursor-pointer focus:outline-none focus:border-emerald-700"
+        />
+      </div>
+    `;
+  }
+
   function renderContentItemForm(type, itemId) {
     const isNew = itemId === "new";
     const existing = !isNew ? (studio.draftData[type] || []).find((i) => i.id === itemId) : null;
-    const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     const masterCats = App.getCategoryCollection(studio.draftData, false);
     const defaultCatName = (masterCats[0] && masterCats[0].nama) || "Aqidah";
     const currentCategory = existing ? App.getItemCategory(existing, type) : defaultCatName;
@@ -1626,14 +1717,7 @@ window.SITE_DATA = ${serialized};
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           ${renderCategorySelectFieldHtml(currentCategory)}
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Waktu Baca</label>
-            <input name="waktuBaca" value="${App.escapeHtml(existing?.waktuBaca || "4 menit baca")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
-          <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+          ${renderDatePickerFieldHtml(existing?.tanggal)}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Singkat</label>
@@ -1731,10 +1815,7 @@ window.SITE_DATA = ${serialized};
             <label class="block text-xs font-semibold text-gray-700 mb-1">Sub-Tema (opsional)</label>
             <input name="tema" value="${App.escapeHtml(existing?.tema || "")}" placeholder="Mis. Kesabaran / Syukur" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
-            <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
-          </div>
+          ${renderDatePickerFieldHtml(existing?.tanggal)}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">URL Gambar Flyer atau Unggah Gambar</label>
@@ -1776,10 +1857,7 @@ window.SITE_DATA = ${serialized};
             <input name="durasi" value="${App.escapeHtml(existing?.durasi || "05:00")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
-          <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
-        </div>
+        ${renderDatePickerFieldHtml(existing?.tanggal)}
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">URL Audio (.mp3 / .wav) atau Unggah File</label>
           <input name="audioUrl" id="field-audio-url" required value="${App.escapeHtml(existing?.audioUrl || "/audio/nasihat-berbaik-sangka.wav")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm mb-1.5" />
@@ -1819,10 +1897,7 @@ window.SITE_DATA = ${serialized};
             <label class="block text-xs font-semibold text-gray-700 mb-1">Durasi</label>
             <input name="durasi" value="${App.escapeHtml(existing?.durasi || "10 menit")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
-            <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
-          </div>
+          ${renderDatePickerFieldHtml(existing?.tanggal)}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Ringkasan Materi</label>
@@ -3664,6 +3739,17 @@ window.SITE_DATA = ${serialized};
     }
 
     els.studioPanelBody.addEventListener("click", async (e) => {
+
+      // Munculkan popup kalender langsung saat kolom Tanggal diklik
+      const dateInput = e.target.closest('input[data-date-picker="true"]');
+      if (dateInput) {
+        if (typeof dateInput.showPicker === "function") {
+          try {
+            dateInput.showPicker();
+          } catch (_err) {}
+        }
+        return;
+      }
 
       // Tambah / Hapus Koleksi Font Kustom (R2 / Google Fonts)
       if (e.target.closest("#btn-add-custom-font")) {
