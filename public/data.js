@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 20.47.31.
+ * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 21.00.27.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -187,7 +187,7 @@ window.SITE_DATA = {
     },
     {
       "id": "art-2",
-      "status": "published",
+      "status": "trash",
       "judul": "Menjaga Lisan dan Hati Saat Berbeda Pandangan",
       "tanggal": "02 November 2026",
       "kategori": "Adab & Kehidupan",
@@ -198,7 +198,9 @@ window.SITE_DATA = {
         "Ilmu yang bermanfaat semestinya melunakkan hati, bukan mengeraskannya. Orang yang benar-benar memahami kedalaman sebuah persoalan biasanya justru lebih berhati-hati dalam menghakimi orang lain, karena ia sadar betapa banyak sudut pandang yang belum ia ketahui.",
         "Sebelum menanggapi sesuatu yang tidak sejalan dengan pikiran kita, ada baiknya bertanya kepada diri sendiri: apakah tanggapan ini akan membawa perbaikan, atau sekadar memuaskan keinginan untuk merasa paling benar?",
         "Memilih diam ketika emosi masih tinggi bukanlah kekalahan. Menjaga kehormatan saudara kita dan merawat persaudaraan jauh lebih berharga daripada memenangkan perdebatan singkat yang menyisakan jarak di hati."
-      ]
+      ],
+      "previousStatus": "published",
+      "deletedAt": "2026-11-22T14:00:22.388Z"
     }
   ],
   "ebook": [
