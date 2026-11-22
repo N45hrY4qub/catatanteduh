@@ -1795,14 +1795,21 @@
   // --------------------------------------------------------------------------
   // Modal Baca Artikel & Lightbox Flyer
   // --------------------------------------------------------------------------
+  const MODAL_SIZE_STORAGE_KEY = "catatan_teduh_article_modal_size";
+
   const modalEls = {
     articleModal: document.getElementById("article-modal"),
+    articlePanel: document.getElementById("article-modal-panel"),
     articleScroll: document.getElementById("modal-article-scroll"),
     articleProgress: document.getElementById("modal-read-progress"),
     articleMeta: document.getElementById("modal-article-meta"),
     articleTitle: document.getElementById("modal-article-title"),
     articleBody: document.getElementById("modal-article-body"),
     articleClose: document.getElementById("modal-article-close"),
+    articleResizeToggle: document.getElementById("modal-article-resize-toggle"),
+    resizeIconExpand: document.getElementById("modal-resize-icon-expand"),
+    resizeIconCompress: document.getElementById("modal-resize-icon-compress"),
+    articleResizeHandles: Array.from(document.querySelectorAll("[data-modal-resize]")),
     articleWa: document.getElementById("modal-wa-share"),
     articleCopy: document.getElementById("modal-copy-link"),
     articleCopyLabel: document.getElementById("modal-copy-label"),
@@ -1844,6 +1851,119 @@
     modalEls.articleProgress.style.width = `${pct}%`;
   }
 
+  function getArticleModalBounds() {
+    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
+    const vh = typeof window !== "undefined" && window.innerHeight ? window.innerHeight : 800;
+    const gutter = vw >= 640 ? 48 : 24;
+    const maxWidth = Math.max(320, vw - gutter);
+    const minWidth = Math.min(360, maxWidth);
+    const maxHeight = Math.max(280, vh - gutter);
+    const minHeight = Math.min(320, maxHeight);
+    return { vw, vh, minWidth, maxWidth, minHeight, maxHeight };
+  }
+
+  function getSavedArticleModalSize() {
+    try {
+      const raw = localStorage.getItem(MODAL_SIZE_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const width = Number.isFinite(Number(parsed.width)) && Number(parsed.width) > 0 ? Math.round(Number(parsed.width)) : null;
+      const height = Number.isFinite(Number(parsed.height)) && Number(parsed.height) > 0 ? Math.round(Number(parsed.height)) : null;
+      if (width === null && height === null) return null;
+      return { width, height };
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function saveArticleModalSize(size) {
+    try {
+      if (!size || (size.width == null && size.height == null)) {
+        localStorage.removeItem(MODAL_SIZE_STORAGE_KEY);
+        return;
+      }
+      localStorage.setItem(MODAL_SIZE_STORAGE_KEY, JSON.stringify(size));
+    } catch (_e) {}
+  }
+
+  function isArticleModalExpanded(widthPx) {
+    if (!Number.isFinite(widthPx)) return false;
+    const { maxWidth } = getArticleModalBounds();
+    return widthPx >= Math.min(780, maxWidth - 20);
+  }
+
+  function updateArticleModalResizeUi(widthPx, hasCustomSize) {
+    const btn = modalEls.articleResizeToggle;
+    if (!btn) return;
+    const expanded = Boolean(hasCustomSize && isArticleModalExpanded(widthPx));
+    btn.dataset.resizeState = expanded ? "expanded" : "default";
+    btn.setAttribute(
+      "aria-label",
+      expanded ? "Kembalikan ukuran normal jendela baca" : "Perlebar jendela baca"
+    );
+    btn.setAttribute(
+      "title",
+      expanded
+        ? "Kembalikan ukuran normal (atau tarik tepi jendela)"
+        : "Perlebar jendela baca (atau tarik tepi jendela)"
+    );
+    if (modalEls.resizeIconExpand) {
+      modalEls.resizeIconExpand.classList.toggle("hidden", expanded);
+    }
+    if (modalEls.resizeIconCompress) {
+      modalEls.resizeIconCompress.classList.toggle("hidden", !expanded);
+    }
+  }
+
+  function applyArticleModalSize(widthPx, heightPx, persist) {
+    const panel = modalEls.articlePanel;
+    if (!panel || !panel.style) return null;
+
+    if (widthPx == null && heightPx == null) {
+      panel.style.width = "";
+      panel.style.maxWidth = "";
+      panel.style.height = "";
+      panel.style.maxHeight = "";
+      if (persist) saveArticleModalSize(null);
+      updateArticleModalResizeUi(null, false);
+      updateReadingProgress();
+      return null;
+    }
+
+    const { minWidth, maxWidth, minHeight, maxHeight } = getArticleModalBounds();
+    const clampedW =
+      Number.isFinite(widthPx) ? Math.round(Math.min(maxWidth, Math.max(minWidth, widthPx))) : null;
+    const clampedH =
+      Number.isFinite(heightPx) ? Math.round(Math.min(maxHeight, Math.max(minHeight, heightPx))) : null;
+
+    if (clampedW !== null) {
+      panel.style.width = `${clampedW}px`;
+      panel.style.maxWidth = "none";
+    } else {
+      panel.style.width = "";
+      panel.style.maxWidth = "";
+    }
+
+    if (clampedH !== null) {
+      panel.style.height = `${clampedH}px`;
+      panel.style.maxHeight = "none";
+    } else {
+      panel.style.height = "";
+      panel.style.maxHeight = "";
+    }
+
+    const resolved = { width: clampedW, height: clampedH };
+    if (persist) saveArticleModalSize(resolved);
+    updateArticleModalResizeUi(clampedW, clampedW !== null || clampedH !== null);
+    updateReadingProgress();
+    return resolved;
+  }
+
+  function resetArticleModalSize() {
+    applyArticleModalSize(null, null, true);
+  }
+
   function openArticleModal(articleId) {
     const src = state.currentData || window.SITE_DATA;
     const item = (src.tulisan || []).find((t) => t.id === articleId);
@@ -1879,6 +1999,15 @@
     if (modalEls.articleCopyLabel) modalEls.articleCopyLabel.textContent = "Salin Teks";
 
     applyArticleFontSize(state.fontSize);
+
+    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
+    const savedSize = vw >= 640 ? getSavedArticleModalSize() : null;
+    if (savedSize) {
+      applyArticleModalSize(savedSize.width, savedSize.height, false);
+    } else {
+      applyArticleModalSize(null, null, false);
+    }
+
     modalEls.articleModal.classList.remove("hidden");
     if (modalEls.articleScroll) modalEls.articleScroll.scrollTop = 0;
     updateReadingProgress();
@@ -2085,6 +2214,111 @@
     modalEls.articleModal.addEventListener("click", (e) => {
       if (e.target === modalEls.articleModal) closeArticleModal();
     });
+
+    if (modalEls.articleResizeToggle && modalEls.articlePanel) {
+      modalEls.articleResizeToggle.addEventListener("click", () => {
+        const currentRect = modalEls.articlePanel.getBoundingClientRect
+          ? modalEls.articlePanel.getBoundingClientRect()
+          : { width: 672, height: 600 };
+        const hasInline = Boolean(modalEls.articlePanel.style.width || modalEls.articlePanel.style.height);
+        if (hasInline && isArticleModalExpanded(currentRect.width)) {
+          resetArticleModalSize();
+        } else {
+          const { maxWidth, maxHeight, vh } = getArticleModalBounds();
+          const targetWidth = Math.min(1120, maxWidth);
+          const targetHeight = Math.min(Math.round(vh * 0.9), maxHeight);
+          applyArticleModalSize(targetWidth, targetHeight, true);
+        }
+      });
+    }
+
+    if (modalEls.articlePanel && modalEls.articleResizeHandles.length) {
+      modalEls.articleResizeHandles.forEach((handle) => {
+        handle.addEventListener("dblclick", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          resetArticleModalSize();
+        });
+
+        handle.addEventListener("pointerdown", (e) => {
+          if (e.button && e.button !== 0) return;
+          const panel = modalEls.articlePanel;
+          if (!panel || !panel.getBoundingClientRect) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          const mode = handle.dataset.modalResize || "right";
+          const rect = panel.getBoundingClientRect();
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startW = rect.width || 672;
+          const startH = rect.height || 520;
+          const hadHeightBefore = Boolean(panel.style.height);
+          const hadWidthBefore = Boolean(panel.style.width);
+
+          const prevUserSelect = document.body.style.userSelect;
+          const prevRootCursor = document.documentElement.style.cursor;
+          document.body.style.userSelect = "none";
+          document.documentElement.style.cursor =
+            mode === "corner" ? "nwse-resize" : mode === "bottom" ? "ns-resize" : "ew-resize";
+
+          let latestSize = {
+            width: hadWidthBefore ? Math.round(startW) : null,
+            height: hadHeightBefore ? Math.round(startH) : null,
+          };
+
+          const onPointerMove = (moveEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+
+            // Modal terpusat secara horizontal & vertikal, sehingga 2*delta membuat tepi tepat mengikuti kursor
+            let nextW = latestSize.width;
+            if (mode === "right" || mode === "corner") {
+              nextW = startW + dx * 2;
+            } else if (mode === "left") {
+              nextW = startW - dx * 2;
+            }
+
+            let nextH = latestSize.height;
+            if (mode === "bottom" || mode === "corner") {
+              nextH = startH + dy * 2;
+            }
+
+            const applied = applyArticleModalSize(nextW, nextH, false);
+            if (applied) latestSize = applied;
+          };
+
+          const finishDrag = () => {
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", finishDrag);
+            window.removeEventListener("pointercancel", finishDrag);
+            document.body.style.userSelect = prevUserSelect;
+            document.documentElement.style.cursor = prevRootCursor;
+            saveArticleModalSize(latestSize);
+          };
+
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", finishDrag);
+          window.addEventListener("pointercancel", finishDrag);
+        });
+      });
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", () => {
+        if (!modalEls.articleModal || modalEls.articleModal.classList.contains("hidden")) return;
+        const panel = modalEls.articlePanel;
+        if (!panel || !panel.style) return;
+        if (window.innerWidth < 640) {
+          applyArticleModalSize(null, null, false);
+          return;
+        }
+        const saved = getSavedArticleModalSize();
+        if (saved) {
+          applyArticleModalSize(saved.width, saved.height, false);
+        }
+      });
+    }
 
     modalEls.lightboxClose.addEventListener("click", closeLightbox);
     modalEls.lightboxModal.addEventListener("click", (e) => {
