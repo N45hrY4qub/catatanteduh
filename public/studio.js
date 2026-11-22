@@ -31,6 +31,9 @@
     previewDevice: "desktop",
     previewMode: "draft", // "draft" | "public"
     previewActiveTab: "tulisan",
+    previewCategory: "all",
+    previewCategoryView: "grouped",
+    contentCategoryFilter: "all",
     workspaceView: "edit", // "edit" | "preview"
     hasUnsavedChanges: false,
     pendingConfirmAction: null,
@@ -284,8 +287,17 @@ window.SITE_DATA = ${serialized};
   // --------------------------------------------------------------------------
   // Pengolah Form Item Konten & Render Halaman Pratinjau Terpisah
   // --------------------------------------------------------------------------
+  function resolveKategoriFromForm(formData) {
+    const sel = String(formData.get("kategori") || "").trim();
+    if (sel === "__custom__") {
+      return String(formData.get("kategoriCustom") || "").trim() || "Umum";
+    }
+    return sel || "Umum";
+  }
+
   function extractContentItemFromForm(type, formData, itemId) {
     let newItem = { id: itemId, status: formData.get("status") || "published" };
+    const kategori = resolveKategoriFromForm(formData);
 
     if (type === "tulisan") {
       const paragraphs = String(formData.get("isi") || "")
@@ -295,7 +307,7 @@ window.SITE_DATA = ${serialized};
       newItem = {
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
-        kategori: String(formData.get("kategori") || "Refleksi").trim(),
+        kategori,
         waktuBaca: String(formData.get("waktuBaca") || "3 menit baca").trim(),
         tanggal: String(formData.get("tanggal") || "").trim(),
         ringkasan: String(formData.get("ringkasan") || "").trim(),
@@ -305,6 +317,7 @@ window.SITE_DATA = ${serialized};
       newItem = {
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
+        kategori,
         penulis: String(formData.get("penulis") || "").trim(),
         tahun: String(formData.get("tahun") || "2026").trim(),
         halaman: String(formData.get("halaman") || "").trim(),
@@ -318,6 +331,7 @@ window.SITE_DATA = ${serialized};
       newItem = {
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
+        kategori,
         tema: String(formData.get("tema") || "").trim(),
         tanggal: String(formData.get("tanggal") || "").trim(),
         gambar: String(formData.get("gambar") || "").trim(),
@@ -328,6 +342,7 @@ window.SITE_DATA = ${serialized};
       newItem = {
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
+        kategori,
         seri: String(formData.get("seri") || "").trim(),
         durasi: String(formData.get("durasi") || "").trim(),
         tanggal: String(formData.get("tanggal") || "").trim(),
@@ -339,7 +354,7 @@ window.SITE_DATA = ${serialized};
         ...newItem,
         judul: String(formData.get("judul") || "").trim(),
         youtubeId: extractYoutubeId(formData.get("youtubeId")),
-        kategori: String(formData.get("kategori") || "").trim(),
+        kategori,
         durasi: String(formData.get("durasi") || "").trim(),
         tanggal: String(formData.get("tanggal") || "").trim(),
         ringkasan: String(formData.get("ringkasan") || "").trim(),
@@ -386,6 +401,8 @@ window.SITE_DATA = ${serialized};
     App.renderSiteInto(els.studioPreviewMount, snapshot, {
       includeDrafts: studio.previewMode === "draft",
       activeTab: studio.previewActiveTab,
+      activeCategory: studio.previewCategory,
+      categoryViewMode: studio.previewCategoryView,
       searchQuery: "",
       isPreview: true,
     });
@@ -1118,6 +1135,56 @@ window.SITE_DATA = ${serialized};
           </div>
         </div>
 
+        <!-- Kelola Kategori Materi (Lintas Tulisan, Ebook, Flyer, Audio, Video) -->
+        <div class="pt-4 border-t border-stone-200 space-y-3">
+          <div>
+            <p class="text-xs font-semibold text-gray-700">Kelola Kategori Bidang Ilmu</p>
+            <p class="text-[11px] text-gray-500 leading-relaxed mt-0.5">
+              Kategori di bawah dipakai bersama di seluruh menu (Tulisan, Ebook, Flyer, Audio, Video) agar topik yang sama saling terhubung antar format media.
+            </p>
+          </div>
+
+          <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+            ${(() => {
+              const masterCats = App.getCategoryCollection(studio.draftData, false);
+              if (!masterCats.length) {
+                return `<p class="text-[11px] text-gray-400 italic py-2">Belum ada kategori tersimpan.</p>`;
+              }
+              return masterCats
+                .map(
+                  (c, idx) => `
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-stone-200 bg-white">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs font-semibold text-gray-800 truncate">${App.escapeHtml(c.nama)}</p>
+                    ${
+                      c.deskripsi
+                        ? `<p class="text-[11px] text-gray-500 truncate mt-0.5">${App.escapeHtml(c.deskripsi)}</p>`
+                        : ""
+                    }
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" data-move-cat="${idx}" data-dir="-1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Geser naik">&uarr;</button>
+                    <button type="button" data-move-cat="${idx}" data-dir="1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Geser turun">&darr;</button>
+                    <button type="button" data-remove-cat="${idx}" class="px-2 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-50 rounded-md" title="Hapus kategori">Hapus</button>
+                  </div>
+                </div>
+              `
+                )
+                .join("");
+            })()}
+          </div>
+
+          <div class="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
+            <p class="text-[11px] font-semibold text-gray-700">+ Tambah Kategori Baru</p>
+            <input type="text" id="cfg-new-cat-name" placeholder="Nama kategori (mis. Sirah Nabawiyah)" class="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg" />
+            <input type="text" id="cfg-new-cat-desc" placeholder="Keterangan singkat bab (opsional)" class="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg" />
+            <button type="button" id="btn-add-content-category" class="w-full py-2 px-3 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors">
+              Tambahkan Kategori Materi
+            </button>
+            <p id="cfg-cat-status" class="text-[11px] text-gray-500"></p>
+          </div>
+        </div>
+
         <!-- Elemen Beranda -->
         <div class="pt-4 border-t border-stone-200 space-y-3">
           <p class="text-xs font-semibold text-gray-700">Elemen di Halaman Beranda</p>
@@ -1283,7 +1350,22 @@ window.SITE_DATA = ${serialized};
 
     const currentLabel = types.find((t) => t.key === studio.contentType).label;
     const showingTrash = studio.contentView === "trash";
-    const visibleItems = showingTrash ? trashItems : activeItems;
+    const categoryBuckets = Array.from(
+      new Set(activeItems.map((it) => App.getItemCategory(it, studio.contentType)))
+    );
+    const activeCatFilter =
+      !showingTrash &&
+      studio.contentCategoryFilter !== "all" &&
+      categoryBuckets.some((c) => c.toLowerCase() === String(studio.contentCategoryFilter).toLowerCase())
+        ? studio.contentCategoryFilter
+        : "all";
+    const visibleItems = showingTrash
+      ? trashItems
+      : activeCatFilter === "all"
+      ? activeItems
+      : activeItems.filter(
+          (it) => App.getItemCategory(it, studio.contentType).toLowerCase() === activeCatFilter.toLowerCase()
+        );
 
     return `
       <div class="space-y-4">
@@ -1338,14 +1420,35 @@ window.SITE_DATA = ${serialized};
         ${
           !showingTrash
             ? `
-          <!-- Tombol Tambah Item Baru -->
-          <button
-            type="button"
-            id="btn-add-content-item"
-            class="w-full py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
-          >
-            + Tambah ${currentLabel} Baru
-          </button>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <!-- Tombol Tambah Item Baru -->
+            <button
+              type="button"
+              id="btn-add-content-item"
+              class="flex-1 py-2.5 px-4 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
+            >
+              + Tambah ${currentLabel} Baru
+            </button>
+            ${
+              categoryBuckets.length > 1
+                ? `
+              <select id="studio-konten-cat-filter" class="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-stone-200 rounded-xl">
+                <option value="all" ${activeCatFilter === "all" ? "selected" : ""}>Semua Kategori (${activeItems.length})</option>
+                ${categoryBuckets
+                  .map((c) => {
+                    const cnt = activeItems.filter(
+                      (it) => App.getItemCategory(it, studio.contentType).toLowerCase() === c.toLowerCase()
+                    ).length;
+                    return `<option value="${App.escapeHtml(c)}" ${
+                      activeCatFilter.toLowerCase() === c.toLowerCase() ? "selected" : ""
+                    }>${App.escapeHtml(c)} (${cnt})</option>`;
+                  })
+                  .join("")}
+              </select>
+            `
+                : ""
+            }
+          </div>
         `
             : `
           <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-[11px] text-amber-950 space-y-2">
@@ -1375,6 +1478,7 @@ window.SITE_DATA = ${serialized};
             visibleItems.length
               ? visibleItems
                   .map((item) => {
+                    const itemCat = App.getItemCategory(item, studio.contentType);
                     if (showingTrash) {
                       const deletedInfo = item.deletedAt
                         ? new Date(item.deletedAt).toLocaleDateString("id-ID", {
@@ -1386,12 +1490,14 @@ window.SITE_DATA = ${serialized};
                       return `
                         <div class="p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/30 space-y-2.5">
                           <div class="min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                              <span class="text-[11px] font-semibold text-amber-700">Dihapus Sementara</span>
-                              <span class="text-[11px] text-gray-400">&middot;</span>
-                              <span class="text-[11px] text-gray-500 truncate">${App.escapeHtml(deletedInfo)}</span>
+                            <div class="flex items-center gap-1.5 mb-1 text-[11px]">
+                              <span class="font-semibold text-amber-700">Dihapus Sementara</span>
+                              <span class="text-gray-400">&middot;</span>
+                              <span class="font-medium text-gray-600 truncate">${App.escapeHtml(itemCat)}</span>
+                              <span class="text-gray-400">&middot;</span>
+                              <span class="text-gray-500 truncate">${App.escapeHtml(deletedInfo)}</span>
                             </div>
-                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(item.judul)}</p>
+                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(App.stripRichTags(item.judul))}</p>
                           </div>
 
                           <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-amber-200/60 text-[11px]">
@@ -1418,16 +1524,18 @@ window.SITE_DATA = ${serialized};
                       <div class="p-3.5 rounded-xl border border-stone-200 bg-white space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
                           <div class="min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                              <span class="text-[11px] font-semibold ${
+                            <div class="flex flex-wrap items-center gap-1.5 mb-1 text-[11px]">
+                              <span class="font-semibold ${
                                 item.status === "draft" ? "text-amber-700" : "text-emerald-700"
                               }">
                                 ${item.status === "draft" ? "Draft" : "Tayang"}
                               </span>
-                              <span class="text-[11px] text-gray-400">&middot;</span>
-                              <span class="text-[11px] text-gray-500 truncate">${App.escapeHtml(item.tanggal || item.tahun || "")}</span>
+                              <span class="text-gray-400">&middot;</span>
+                              <span class="font-medium text-gray-700 truncate">${App.escapeHtml(itemCat)}</span>
+                              <span class="text-gray-400">&middot;</span>
+                              <span class="text-gray-500 truncate">${App.escapeHtml(item.tanggal || item.tahun || "")}</span>
                             </div>
-                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(item.judul)}</p>
+                            <p class="text-xs font-semibold text-gray-900 line-clamp-2">${App.escapeHtml(App.stripRichTags(item.judul))}</p>
                           </div>
                           <div class="flex items-center gap-1 shrink-0">
                             <button type="button" data-move-item-id="${App.escapeHtml(item.id)}" data-dir="-1" class="px-1.5 py-0.5 text-[11px] bg-stone-100 hover:bg-stone-200 rounded" title="Naikkan">&uarr;</button>
@@ -1464,10 +1572,41 @@ window.SITE_DATA = ${serialized};
     `;
   }
 
+  function renderCategorySelectFieldHtml(selectedCategory) {
+    const categories = App.getCategoryCollection(studio.draftData, true);
+    const val = String(selectedCategory || "").trim() || (categories[0] && categories[0].nama) || "Aqidah";
+    const matched = categories.find((c) => c.nama.toLowerCase() === val.toLowerCase());
+    const optionsList = matched ? categories : [...categories, { nama: val, deskripsi: "" }];
+    const activeName = matched ? matched.nama : val;
+
+    return `
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">Kategori Bidang Ilmu</label>
+        <select name="kategori" data-cat-select="true" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm bg-white focus:outline-none focus:border-emerald-700">
+          ${optionsList
+            .map(
+              (c) =>
+                `<option value="${App.escapeHtml(c.nama)}" ${
+                  c.nama.toLowerCase() === activeName.toLowerCase() ? "selected" : ""
+                }>${App.escapeHtml(c.nama)}</option>`
+            )
+            .join("")}
+          <option value="__custom__">+ Ketik kategori baru...</option>
+        </select>
+        <div data-custom-cat-wrap class="hidden mt-2">
+          <input type="text" name="kategoriCustom" placeholder="Tulis nama kategori baru (otomatis tersimpan ke daftar)..." class="w-full px-3 py-2 border border-emerald-300 rounded-xl text-sm bg-emerald-50/30 focus:outline-none focus:border-emerald-700" />
+        </div>
+      </div>
+    `;
+  }
+
   function renderContentItemForm(type, itemId) {
     const isNew = itemId === "new";
     const existing = !isNew ? (studio.draftData[type] || []).find((i) => i.id === itemId) : null;
     const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+    const masterCats = App.getCategoryCollection(studio.draftData, false);
+    const defaultCatName = (masterCats[0] && masterCats[0].nama) || "Aqidah";
+    const currentCategory = existing ? App.getItemCategory(existing, type) : defaultCatName;
 
     const statusVal = existing ? existing.status || "published" : "published";
 
@@ -1486,10 +1625,7 @@ window.SITE_DATA = ${serialized};
           })}
         </div>
         <div class="grid grid-cols-2 gap-2.5">
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Kategori</label>
-            <input name="kategori" value="${App.escapeHtml(existing?.kategori || "Refleksi Diri")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
-          </div>
+          ${renderCategorySelectFieldHtml(currentCategory)}
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Waktu Baca</label>
             <input name="waktuBaca" value="${App.escapeHtml(existing?.waktuBaca || "4 menit baca")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
@@ -1534,6 +1670,7 @@ window.SITE_DATA = ${serialized};
             required: true,
           })}
         </div>
+        ${renderCategorySelectFieldHtml(currentCategory)}
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Penulis</label>
@@ -1588,10 +1725,11 @@ window.SITE_DATA = ${serialized};
             required: true,
           })}
         </div>
+        ${renderCategorySelectFieldHtml(currentCategory)}
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Tema</label>
-            <input name="tema" value="${App.escapeHtml(existing?.tema || "Nasihat Diri")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Sub-Tema (opsional)</label>
+            <input name="tema" value="${App.escapeHtml(existing?.tema || "")}" placeholder="Mis. Kesabaran / Syukur" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
@@ -1627,9 +1765,10 @@ window.SITE_DATA = ${serialized};
             required: true,
           })}
         </div>
+        ${renderCategorySelectFieldHtml(currentCategory)}
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Seri</label>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Nama Seri / Episode</label>
             <input name="seri" value="${App.escapeHtml(existing?.seri || "Siniar Jeda")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
           <div>
@@ -1674,18 +1813,15 @@ window.SITE_DATA = ${serialized};
           <label class="block text-xs font-semibold text-gray-700 mb-1">Link YouTube atau ID Video (11 karakter)</label>
           <input name="youtubeId" required placeholder="https://youtu.be/... atau ID" value="${App.escapeHtml(existing?.youtubeId || "")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
         </div>
-        <div class="grid grid-cols-3 gap-2">
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Kategori</label>
-            <input name="kategori" value="${App.escapeHtml(existing?.kategori || "Kajian Ringkas")}" class="w-full px-2.5 py-2 border border-stone-200 rounded-xl text-xs" />
-          </div>
+        ${renderCategorySelectFieldHtml(currentCategory)}
+        <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Durasi</label>
-            <input name="durasi" value="${App.escapeHtml(existing?.durasi || "10 menit")}" class="w-full px-2.5 py-2 border border-stone-200 rounded-xl text-xs" />
+            <input name="durasi" value="${App.escapeHtml(existing?.durasi || "10 menit")}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
-            <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-2.5 py-2 border border-stone-200 rounded-xl text-xs" />
+            <input name="tanggal" value="${App.escapeHtml(existing?.tanggal || todayStr)}" class="w-full px-3 py-2 border border-stone-200 rounded-xl text-sm" />
           </div>
         </div>
         <div>
@@ -2271,9 +2407,38 @@ window.SITE_DATA = ${serialized};
 
     // Interaksi di dalam Kanvas Live Preview
     els.studioPreviewMount.addEventListener("click", (e) => {
+      const filterCatBtn = e.target.closest("[data-filter-category]");
+      if (filterCatBtn) {
+        studio.previewCategory = filterCatBtn.dataset.filterCategory || "all";
+        renderLivePreview();
+        return;
+      }
+      const viewModeBtn = e.target.closest("[data-category-view]");
+      if (viewModeBtn) {
+        studio.previewCategoryView = viewModeBtn.dataset.categoryView === "grid" ? "grid" : "grouped";
+        renderLivePreview();
+        return;
+      }
+      const crossBtn = e.target.closest("[data-cross-tab]");
+      if (crossBtn) {
+        studio.previewActiveTab = crossBtn.dataset.crossTab;
+        studio.previewCategory = crossBtn.dataset.crossCategory || "all";
+        renderLivePreview();
+        if (els.studioPreviewView) els.studioPreviewView.scrollTop = 0;
+        return;
+      }
+      const jumpCatBtn = e.target.closest("[data-jump-category]");
+      if (jumpCatBtn) {
+        const targetEl = els.studioPreviewMount.querySelector(
+          `#cat-group-${jumpCatBtn.dataset.jumpCategory}`
+        );
+        if (targetEl) targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const tabBtn = e.target.closest("[data-preview-tab]");
       if (tabBtn) {
         studio.previewActiveTab = tabBtn.dataset.previewTab;
+        studio.previewCategory = "all";
         renderLivePreview();
         return;
       }
@@ -2354,6 +2519,27 @@ window.SITE_DATA = ${serialized};
     });
 
     els.studioPanelBody.addEventListener("change", async (e) => {
+      // Filter kategori di daftar konten Studio
+      if (e.target.id === "studio-konten-cat-filter") {
+        studio.contentCategoryFilter = e.target.value || "all";
+        renderStudioSidebar();
+        return;
+      }
+
+      // Dropdown pilih kategori + opsi ketik kategori baru di form item
+      if (e.target.matches('[data-cat-select="true"]')) {
+        const wrap = e.target.parentNode ? e.target.parentNode.querySelector("[data-custom-cat-wrap]") : null;
+        if (wrap) {
+          const isCustom = e.target.value === "__custom__";
+          wrap.classList.toggle("hidden", !isCustom);
+          if (isCustom) {
+            const inp = wrap.querySelector('input[name="kategoriCustom"]');
+            if (inp) inp.focus();
+          }
+        }
+        return;
+      }
+
       // Toggle elemen beranda
       const toggleKey = e.target.dataset.styleToggle;
       if (toggleKey) {
@@ -3580,6 +3766,73 @@ window.SITE_DATA = ${serialized};
         return;
       }
 
+      // Kelola Kategori Bidang Ilmu (Tambah / Geser / Hapus)
+      if (e.target.closest("#btn-add-content-category")) {
+        const nameEl = document.getElementById("cfg-new-cat-name");
+        const descEl = document.getElementById("cfg-new-cat-desc");
+        const statusEl = document.getElementById("cfg-cat-status");
+        const nama = nameEl ? nameEl.value.trim() : "";
+        const deskripsi = descEl ? descEl.value.trim() : "";
+
+        if (!nama) {
+          if (statusEl) {
+            statusEl.className = "text-[11px] text-red-700";
+            statusEl.textContent = "Isi nama kategori bidang ilmu terlebih dahulu.";
+          }
+          return;
+        }
+
+        const currentList = App.getCategoryCollection(studio.draftData, false);
+        const existingIdx = currentList.findIndex((c) => c.nama.toLowerCase() === nama.toLowerCase());
+        if (existingIdx >= 0) {
+          if (deskripsi) currentList[existingIdx].deskripsi = deskripsi;
+          studio.draftData.tampilan.kategoriMateri = currentList;
+        } else {
+          studio.draftData.tampilan.kategoriMateri = [...currentList, { nama, deskripsi }];
+        }
+
+        saveDraftToLocal();
+        renderStudioSidebar();
+        renderLivePreview();
+
+        const refreshed = document.getElementById("cfg-cat-status");
+        if (refreshed) {
+          refreshed.className = "text-[11px] text-emerald-700 font-medium";
+          refreshed.textContent = `Kategori "${nama}" berhasil disimpan ke daftar pilihan.`;
+        }
+        return;
+      }
+
+      const moveCatBtn = e.target.closest("[data-move-cat]");
+      if (moveCatBtn) {
+        const idx = Number(moveCatBtn.dataset.moveCat);
+        const dir = Number(moveCatBtn.dataset.dir);
+        const arr = [...App.getCategoryCollection(studio.draftData, false)];
+        const targetIdx = idx + dir;
+        if (idx >= 0 && targetIdx >= 0 && targetIdx < arr.length) {
+          [arr[idx], arr[targetIdx]] = [arr[targetIdx], arr[idx]];
+          studio.draftData.tampilan.kategoriMateri = arr;
+          saveDraftToLocal();
+          renderStudioSidebar();
+          renderLivePreview();
+        }
+        return;
+      }
+
+      const removeCatBtn = e.target.closest("[data-remove-cat]");
+      if (removeCatBtn) {
+        const idx = Number(removeCatBtn.dataset.removeCat);
+        const arr = [...App.getCategoryCollection(studio.draftData, false)];
+        if (idx >= 0 && idx < arr.length) {
+          arr.splice(idx, 1);
+          studio.draftData.tampilan.kategoriMateri = arr;
+          saveDraftToLocal();
+          renderStudioSidebar();
+          renderLivePreview();
+        }
+        return;
+      }
+
       // Urutan & Visibilitas Tab
       const toggleTabBtn = e.target.closest("[data-toggle-tab]");
       if (toggleTabBtn) {
@@ -3620,6 +3873,8 @@ window.SITE_DATA = ${serialized};
       if (contentTypeBtn) {
         studio.contentType = contentTypeBtn.dataset.contentType;
         studio.previewActiveTab = studio.contentType;
+        studio.previewCategory = "all";
+        studio.contentCategoryFilter = "all";
         studio.editingItemId = null;
         renderStudioSidebar();
         renderLivePreview();
@@ -3889,6 +4144,16 @@ window.SITE_DATA = ${serialized};
 
       const id = isNew ? `${type}-${Date.now()}` : studio.editingItemId;
       const newItem = extractContentItemFromForm(type, formData, id);
+
+      if (newItem.kategori) {
+        const masterCats = App.getCategoryCollection(studio.draftData, false);
+        if (!masterCats.some((c) => c.nama.toLowerCase() === newItem.kategori.toLowerCase())) {
+          studio.draftData.tampilan.kategoriMateri = [
+            ...masterCats,
+            { nama: newItem.kategori, deskripsi: "" },
+          ];
+        }
+      }
 
       if (isNew) {
         studio.draftData[type] = [newItem, ...list];

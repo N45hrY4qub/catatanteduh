@@ -155,6 +155,18 @@
     },
   ];
 
+  const MEDIA_TAB_KEYS = ["tulisan", "ebook", "flyer", "audio", "video"];
+
+  const DEFAULT_CONTENT_CATEGORIES = [
+    { nama: "Aqidah", deskripsi: "Pokok keimanan, tauhid, dan pengenalan kepada Allah." },
+    { nama: "Fiqh", deskripsi: "Panduan hukum ibadah, muamalah, dan keseharian." },
+    { nama: "Hadits", deskripsi: "Penjelasan riwayat nabawi dan hikmah sunnah." },
+    { nama: "Tazkiyatun Nafs", deskripsi: "Penyucian jiwa, adab hati, dan muhasabah diri." },
+    { nama: "Bahasa Arab", deskripsi: "Kaidah nahwu, shorf, dan pemahaman teks Arab." },
+    { nama: "Tajwid", deskripsi: "Makhraj huruf, sifat bacaan, dan tartil Al-Qur'an." },
+    { nama: "Ilmu Qiroah", deskripsi: "Ragam qira'at mutawatirah dan sejarah periwayatannya." },
+  ];
+
   const TAB_META = {
     tulisan: { label: "Tulisan", navLabel: "Tulisan", hasCount: true },
     ebook: { label: "Ebook", navLabel: "Ebook", hasCount: true },
@@ -166,6 +178,8 @@
 
   const state = {
     activeTab: "tulisan",
+    activeCategory: "all",
+    categoryViewMode: "grouped", // "grouped" | "grid"
     searchQuery: "",
     fontSize: localStorage.getItem("catatan_teduh_font_size") || "md",
     giscusLoaded: false,
@@ -490,6 +504,137 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
+  function slugifyCategory(name) {
+    const slug = String(name || "umum")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return slug || "umum";
+  }
+
+  function normalizeCategoryEntries(rawList) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(rawList) ? rawList : []).forEach((entry) => {
+      const nama =
+        typeof entry === "string"
+          ? entry.trim()
+          : entry && typeof entry === "object"
+          ? String(entry.nama || "").trim()
+          : "";
+      if (!nama) return;
+      const key = nama.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const deskripsi =
+        entry && typeof entry === "object" ? String(entry.deskripsi || "").trim() : "";
+      out.push({ nama, deskripsi });
+    });
+    return out;
+  }
+
+  function getItemCategory(item, type) {
+    if (!item || typeof item !== "object") return "Umum";
+    const direct = String(item.kategori || "").trim();
+    if (direct) return direct;
+    if (type === "flyer") {
+      const tema = String(item.tema || "").trim();
+      if (tema) return tema;
+    }
+    return "Umum";
+  }
+
+  function getCategoryCollection(siteData, includeUsedFromItems) {
+    const t = (siteData && siteData.tampilan) || {};
+    const baseList = Array.isArray(t.kategoriMateri)
+      ? normalizeCategoryEntries(t.kategoriMateri)
+      : DEFAULT_CONTENT_CATEGORIES.map((c) => ({ ...c }));
+
+    if (includeUsedFromItems === false) {
+      return baseList;
+    }
+
+    const seen = new Set(baseList.map((c) => c.nama.toLowerCase()));
+    const merged = [...baseList];
+
+    MEDIA_TAB_KEYS.forEach((key) => {
+      const items = Array.isArray(siteData && siteData[key]) ? siteData[key] : [];
+      items.forEach((item) => {
+        if (!item || item.status === "trash") return;
+        const catName = getItemCategory(item, key);
+        const low = catName.toLowerCase();
+        if (!seen.has(low)) {
+          seen.add(low);
+          merged.push({ nama: catName, deskripsi: "" });
+        }
+      });
+    });
+
+    return merged;
+  }
+
+  function groupItemsByCategory(siteData, tabKey, items) {
+    const masterList = getCategoryCollection(siteData, true);
+    const metaByLower = new Map(masterList.map((c) => [c.nama.toLowerCase(), c]));
+    const bucketsByLower = new Map();
+
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const catName = getItemCategory(item, tabKey);
+      const low = catName.toLowerCase();
+      if (!bucketsByLower.has(low)) {
+        const meta = metaByLower.get(low);
+        bucketsByLower.set(low, {
+          nama: meta ? meta.nama : catName,
+          slug: slugifyCategory(meta ? meta.nama : catName),
+          deskripsi: meta ? meta.deskripsi : "",
+          items: [],
+        });
+      }
+      bucketsByLower.get(low).items.push(item);
+    });
+
+    const ordered = [];
+    const consumed = new Set();
+
+    masterList.forEach((c) => {
+      const low = c.nama.toLowerCase();
+      if (bucketsByLower.has(low) && !consumed.has(low)) {
+        consumed.add(low);
+        ordered.push(bucketsByLower.get(low));
+      }
+    });
+
+    bucketsByLower.forEach((bucket, low) => {
+      if (!consumed.has(low)) {
+        ordered.push(bucket);
+      }
+    });
+
+    return ordered;
+  }
+
+  function getCrossMediaMatches(siteData, categoryName, excludeTabKey, searchQuery, includeDrafts) {
+    const target = String(categoryName || "").trim().toLowerCase();
+    if (!target || target === "all") return [];
+
+    const activeTabs = getActiveTabsList(siteData).filter(
+      (k) => MEDIA_TAB_KEYS.includes(k) && k !== excludeTabKey
+    );
+
+    return activeTabs
+      .map((k) => {
+        const list = filterItems(siteData, k, searchQuery, includeDrafts);
+        const count = list.filter((it) => getItemCategory(it, k).toLowerCase() === target).length;
+        return {
+          key: k,
+          label: TAB_META[k].label,
+          navLabel: TAB_META[k].navLabel,
+          count,
+        };
+      })
+      .filter((m) => m.count > 0);
+  }
+
   function getActiveTabsList(siteData) {
     const t = (siteData && siteData.tampilan) || {};
     const list = Array.isArray(t.tabAktif) && t.tabAktif.length
@@ -611,18 +756,197 @@
     return `<span class="px-2 py-0.5 text-[11px] font-semibold text-amber-800 bg-amber-100 border border-amber-300/80 rounded-md">Draft</span>`;
   }
 
-  function buildTulisanHtml(siteData, query, includeDrafts) {
-    const items = filterItems(siteData, "tulisan", query, includeDrafts);
-    if (!items.length) return buildEmptyHtml("tulisan", query);
+  function buildCategoryToolbarAndContentHtml(siteData, tabKey, items, emptyLabel, query, includeDrafts, options, renderListFn) {
+    if (!items.length) return buildEmptyHtml(emptyLabel, query);
 
-    const cards = items
-      .map(
-        (item, idx) => `
+    const opts = options || {};
+    const buckets = groupItemsByCategory(siteData, tabKey, items);
+    const requestedCat = String(opts.activeCategory || "all").trim();
+    const matchedBucket =
+      requestedCat && requestedCat.toLowerCase() !== "all"
+        ? buckets.find((b) => b.nama.toLowerCase() === requestedCat.toLowerCase()) || null
+        : null;
+    const resolvedCategory = matchedBucket ? matchedBucket.nama : "all";
+    const viewMode = opts.categoryViewMode === "grid" ? "grid" : "grouped";
+
+    // Ide 1: Bar filter kategori editorial + pengalih mode tampilan
+    const filterButtonsHtml = `
+      <button
+        type="button"
+        data-filter-category="all"
+        class="px-3.5 py-2 text-xs font-medium rounded-xl border transition-colors whitespace-nowrap shrink-0 tabular-nums ${
+          resolvedCategory === "all"
+            ? "theme-bg-accent text-white border-transparent shadow-xs"
+            : "bg-white text-gray-600 border-stone-200/90 hover:text-[#1F2937] hover:border-stone-300"
+        }"
+      >
+        Semua <span class="opacity-80">(${items.length})</span>
+      </button>
+      ${buckets
+        .map((b) => {
+          const isActive = resolvedCategory !== "all" && b.nama.toLowerCase() === resolvedCategory.toLowerCase();
+          return `
+            <button
+              type="button"
+              data-filter-category="${escapeHtml(b.nama)}"
+              class="px-3.5 py-2 text-xs font-medium rounded-xl border transition-colors whitespace-nowrap shrink-0 tabular-nums ${
+                isActive
+                  ? "theme-bg-accent text-white border-transparent shadow-xs"
+                  : "bg-white text-gray-600 border-stone-200/90 hover:text-[#1F2937] hover:border-stone-300"
+              }"
+            >
+              ${escapeHtml(b.nama)} <span class="opacity-75">(${b.items.length})</span>
+            </button>
+          `;
+        })
+        .join("")}
+    `;
+
+    const viewSwitchHtml = `
+      <div class="inline-flex items-center p-1 bg-[#F3F1EC] border border-stone-200/80 rounded-xl shrink-0" role="group" aria-label="Mode tampilan kelompok materi">
+        <button
+          type="button"
+          data-category-view="grouped"
+          class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+            viewMode === "grouped"
+              ? "bg-white text-[#1F2937] shadow-xs"
+              : "text-gray-600 hover:text-[#1F2937]"
+          }"
+        >
+          Per Kelompok
+        </button>
+        <button
+          type="button"
+          data-category-view="grid"
+          class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+            viewMode === "grid"
+              ? "bg-white text-[#1F2937] shadow-xs"
+              : "text-gray-600 hover:text-[#1F2937]"
+          }"
+        >
+          Ringkas
+        </button>
+      </div>
+    `;
+
+    const toolbarHtml = `
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0 flex-wrap">
+          ${filterButtonsHtml}
+        </div>
+        ${viewSwitchHtml}
+      </div>
+    `;
+
+    // Ide 4: Hubungan Lintas Format Media untuk kategori yang sedang dipilih
+    let crossMediaHtml = "";
+    if (resolvedCategory !== "all") {
+      const crossMatches = getCrossMediaMatches(siteData, resolvedCategory, tabKey, query, includeDrafts);
+      if (crossMatches.length) {
+        crossMediaHtml = `
+          <div class="mb-7 bg-[#F3F1EC]/90 border border-stone-200/85 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs sm:text-sm text-gray-600">
+              Topik <strong class="font-semibold text-[#1F2937]">${escapeHtml(resolvedCategory)}</strong> tersedia juga di format lain:
+            </p>
+            <div class="flex flex-wrap items-center gap-2">
+              ${crossMatches
+                .map(
+                  (m) => `
+                <button
+                  type="button"
+                  data-cross-tab="${escapeHtml(m.key)}"
+                  data-cross-category="${escapeHtml(resolvedCategory)}"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white hover:bg-stone-50 theme-text-accent border border-stone-200/90 rounded-lg transition-colors whitespace-nowrap shrink-0 tabular-nums"
+                >
+                  <span>${escapeHtml(m.navLabel)}</span>
+                  <span class="opacity-75">(${m.count})</span>
+                  <span aria-hidden="true">&rarr;</span>
+                </button>
+              `
+                )
+                .join("")}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Ide 2: Indeks Lompat Cepat ketika mode Per Kelompok & menampilkan lebih dari 1 kategori
+    let quickJumpHtml = "";
+    if (viewMode === "grouped" && resolvedCategory === "all" && buckets.length > 1) {
+      quickJumpHtml = `
+        <nav aria-label="Daftar kategori" class="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 pb-3 border-b border-stone-200/60">
+          <span class="font-medium text-gray-400">Daftar topik:</span>
+          ${buckets
+            .map(
+              (b, idx) => `
+            <button
+              type="button"
+              data-jump-category="${escapeHtml(b.slug)}"
+              class="inline-flex items-baseline gap-1.5 text-gray-600 hover:theme-text-accent transition-colors whitespace-nowrap shrink-0 py-0.5"
+            >
+              <span class="font-theme-display text-[11px] text-stone-400 tabular-nums">${formatIndex(idx)}</span>
+              <span class="font-medium">${escapeHtml(b.nama)}</span>
+            </button>
+          `
+            )
+            .join('<span aria-hidden="true" class="text-stone-300">·</span>')}
+        </nav>
+      `;
+    }
+
+    // Konten utama: Mode Per Kelompok (Rak Bab) vs Mode Ringkas (Flat Grid/List)
+    let bodyHtml = "";
+    if (viewMode === "grouped") {
+      const visibleBuckets = matchedBucket ? [matchedBucket] : buckets;
+      bodyHtml = `
+        <div class="space-y-12 panel-enter">
+          ${visibleBuckets
+            .map((b, bIdx) => {
+              const displayIdx = matchedBucket ? buckets.indexOf(matchedBucket) : bIdx;
+              return `
+                <section id="cat-group-${escapeHtml(b.slug)}" class="scroll-mt-24">
+                  <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pb-3 mb-5 border-b border-stone-200/75">
+                    <div>
+                      <div class="flex items-baseline gap-2.5">
+                        <span class="font-theme-display text-sm text-stone-400 tabular-nums">${formatIndex(displayIdx)}</span>
+                        <h3 class="font-theme-display text-lg sm:text-xl font-medium text-[#1F2937]">${escapeHtml(b.nama)}</h3>
+                      </div>
+                      ${
+                        b.deskripsi
+                          ? `<p class="text-xs sm:text-sm text-gray-500 mt-1">${escapeHtml(b.deskripsi)}</p>`
+                          : ""
+                      }
+                    </div>
+                    <span class="text-xs text-gray-500 tabular-nums shrink-0">${b.items.length} materi</span>
+                  </div>
+                  ${renderListFn(b.items)}
+                </section>
+              `;
+            })
+            .join("")}
+        </div>
+      `;
+    } else {
+      const visibleItems = matchedBucket ? matchedBucket.items : items;
+      bodyHtml = renderListFn(visibleItems);
+    }
+
+    return `${toolbarHtml}${crossMediaHtml}${quickJumpHtml}${bodyHtml}`;
+  }
+
+  function buildTulisanHtml(siteData, query, includeDrafts, options) {
+    const items = filterItems(siteData, "tulisan", query, includeDrafts);
+    const renderCards = (chunk) => {
+      const cards = chunk
+        .map((item, idx) => {
+          const cat = getItemCategory(item, "tulisan");
+          return `
         <article class="group site-card rounded-2xl p-7 sm:p-8 flex flex-col justify-between hover:-translate-y-0.5">
           <div>
             <div class="flex items-center justify-between gap-4 mb-5">
               <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                <span class="font-semibold theme-text-accent">${escapeHtml(item.kategori)}</span>
+                <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
                 <span aria-hidden="true">·</span>
                 <span>${escapeHtml(item.tanggal)}</span>
                 <span aria-hidden="true">·</span>
@@ -659,20 +983,22 @@
             </button>
           </div>
         </article>
-      `
-      )
-      .join("");
+      `;
+        })
+        .join("");
+      return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    };
 
-    return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    return buildCategoryToolbarAndContentHtml(siteData, "tulisan", items, "tulisan", query, includeDrafts, options, renderCards);
   }
 
-  function buildEbookHtml(siteData, query, includeDrafts) {
+  function buildEbookHtml(siteData, query, includeDrafts, options) {
     const items = filterItems(siteData, "ebook", query, includeDrafts);
-    if (!items.length) return buildEmptyHtml("ebook", query);
-
-    const cards = items
-      .map(
-        (item) => `
+    const renderCards = (chunk) => {
+      const cards = chunk
+        .map((item) => {
+          const cat = getItemCategory(item, "ebook");
+          return `
         <article class="site-card rounded-2xl p-6 sm:p-7 flex flex-col sm:flex-row gap-6 sm:gap-7">
           <div class="w-40 sm:w-44 shrink-0 mx-auto sm:mx-0">
             <div class="aspect-[3/4] rounded-xl overflow-hidden bg-stone-100 border border-stone-200/80 shadow-book relative">
@@ -693,10 +1019,10 @@
 
           <div class="flex-1 flex flex-col justify-between min-w-0">
             <div>
-              <div class="flex flex-wrap items-center gap-2 mb-1.5">
-                <p class="text-xs font-medium theme-text-accent">
-                  Oleh ${escapeHtml(item.penulis)} · ${escapeHtml(item.tahun)}
-                </p>
+              <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-1.5">
+                <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
+                <span aria-hidden="true">·</span>
+                <span>Oleh ${escapeHtml(item.penulis)} · ${escapeHtml(item.tahun)}</span>
                 ${buildDraftBadge(item)}
               </div>
               <h2 dir="${detectTextDirection(item.judul)}" class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] mb-3 ${
@@ -741,20 +1067,24 @@
             </div>
           </div>
         </article>
-      `
-      )
-      .join("");
+      `;
+        })
+        .join("");
+      return `<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    };
 
-    return `<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    return buildCategoryToolbarAndContentHtml(siteData, "ebook", items, "ebook", query, includeDrafts, options, renderCards);
   }
 
-  function buildFlyerHtml(siteData, query, includeDrafts) {
+  function buildFlyerHtml(siteData, query, includeDrafts, options) {
     const items = filterItems(siteData, "flyer", query, includeDrafts);
-    if (!items.length) return buildEmptyHtml("flyer nasihat", query);
-
-    const cards = items
-      .map(
-        (item) => `
+    const renderCards = (chunk) => {
+      const cards = chunk
+        .map((item) => {
+          const cat = getItemCategory(item, "flyer");
+          const tema = String(item.tema || "").trim();
+          const showTema = tema && tema.toLowerCase() !== cat.toLowerCase();
+          return `
         <figure class="site-card rounded-2xl p-4 sm:p-5 flex flex-col">
           <button
             type="button"
@@ -781,7 +1111,8 @@
           <figcaption class="pt-5 px-1 flex-1 flex flex-col justify-between">
             <div>
               <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-2">
-                <span class="font-semibold theme-text-accent">${escapeHtml(item.tema)}</span>
+                <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
+                ${showTema ? `<span aria-hidden="true">·</span><span>${escapeHtml(tema)}</span>` : ""}
                 <span aria-hidden="true">·</span>
                 <span>${escapeHtml(item.tanggal)}</span>
                 ${buildDraftBadge(item)}
@@ -813,20 +1144,24 @@
             </div>
           </figcaption>
         </figure>
-      `
-      )
-      .join("");
+      `;
+        })
+        .join("");
+      return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl panel-enter">${cards}</div>`;
+    };
 
-    return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl panel-enter">${cards}</div>`;
+    return buildCategoryToolbarAndContentHtml(siteData, "flyer", items, "flyer nasihat", query, includeDrafts, options, renderCards);
   }
 
-  function buildAudioHtml(siteData, query, includeDrafts) {
+  function buildAudioHtml(siteData, query, includeDrafts, options) {
     const items = filterItems(siteData, "audio", query, includeDrafts);
-    if (!items.length) return buildEmptyHtml("audio kajian", query);
-
-    const list = items
-      .map(
-        (item, idx) => `
+    const renderCards = (chunk) => {
+      const list = chunk
+        .map((item, idx) => {
+          const cat = getItemCategory(item, "audio");
+          const seri = String(item.seri || "").trim();
+          const showSeri = seri && seri.toLowerCase() !== cat.toLowerCase();
+          return `
         <article class="site-card rounded-2xl p-6 sm:p-7">
           <div class="flex items-start gap-4 sm:gap-5 mb-5">
             <div class="w-11 h-11 rounded-xl theme-bg-soft border theme-border-soft theme-text-accent font-theme-display text-base font-medium flex items-center justify-center shrink-0 tabular-nums">
@@ -834,7 +1169,8 @@
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-1.5 tabular-nums">
-                <span class="font-semibold theme-text-accent">${escapeHtml(item.seri)}</span>
+                <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
+                ${showSeri ? `<span aria-hidden="true">·</span><span>${escapeHtml(seri)}</span>` : ""}
                 <span aria-hidden="true">·</span>
                 <span>${escapeHtml(item.tanggal)}</span>
                 <span aria-hidden="true">·</span>
@@ -868,20 +1204,22 @@
             </button>
           </div>
         </article>
-      `
-      )
-      .join("");
+      `;
+        })
+        .join("");
+      return `<div class="space-y-5 max-w-3xl panel-enter">${list}</div>`;
+    };
 
-    return `<div class="space-y-5 max-w-3xl panel-enter">${list}</div>`;
+    return buildCategoryToolbarAndContentHtml(siteData, "audio", items, "audio kajian", query, includeDrafts, options, renderCards);
   }
 
-  function buildVideoHtml(siteData, query, includeDrafts) {
+  function buildVideoHtml(siteData, query, includeDrafts, options) {
     const items = filterItems(siteData, "video", query, includeDrafts);
-    if (!items.length) return buildEmptyHtml("video", query);
-
-    const cards = items
-      .map(
-        (item) => `
+    const renderCards = (chunk) => {
+      const cards = chunk
+        .map((item) => {
+          const cat = getItemCategory(item, "video");
+          return `
         <article class="site-card rounded-2xl p-4 sm:p-5 flex flex-col">
           <div class="aspect-video w-full bg-stone-900 rounded-xl overflow-hidden border border-stone-200/60 mb-5">
             <iframe
@@ -897,7 +1235,7 @@
           <div class="px-1 flex-1 flex flex-col justify-between">
             <div>
               <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-2 tabular-nums">
-                <span class="font-semibold theme-text-accent">${escapeHtml(item.kategori)}</span>
+                <span class="font-semibold theme-text-accent">${escapeHtml(cat)}</span>
                 <span aria-hidden="true">·</span>
                 <span>${escapeHtml(item.tanggal)}</span>
                 <span aria-hidden="true">·</span>
@@ -931,11 +1269,13 @@
             </div>
           </div>
         </article>
-      `
-      )
-      .join("");
+      `;
+        })
+        .join("");
+      return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    };
 
-    return `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 panel-enter">${cards}</div>`;
+    return buildCategoryToolbarAndContentHtml(siteData, "video", items, "video", query, includeDrafts, options, renderCards);
   }
 
   function isGiscusConfigured(siteData) {
@@ -1083,8 +1423,11 @@
     const opts = options || {};
     const includeDrafts = Boolean(opts.includeDrafts);
     const activeTab = opts.activeTab || state.activeTab;
+    const activeCategory = opts.activeCategory !== undefined ? opts.activeCategory : state.activeCategory;
+    const categoryViewMode = opts.categoryViewMode || state.categoryViewMode;
     const searchQuery = opts.searchQuery !== undefined ? opts.searchQuery : state.searchQuery;
     const isPreview = Boolean(opts.isPreview);
+    const viewOpts = { activeCategory, categoryViewMode };
 
     state.currentData = siteData;
     applyThemeVariables(siteData.tampilan, siteData);
@@ -1121,7 +1464,7 @@
         )
         .join("");
 
-      const tabPanelHtml = buildTabPanelHtml(siteData, resolvedTab, searchQuery, includeDrafts, true);
+      const tabPanelHtml = buildTabPanelHtml(siteData, resolvedTab, searchQuery, includeDrafts, true, viewOpts);
       const activeMeta = TAB_META[resolvedTab] || { label: "Konten", hasCount: false };
 
       containerEl.innerHTML = `
@@ -1425,29 +1768,29 @@
 
     // Tab panel
     if (tabContentEl) {
-      tabContentEl.innerHTML = buildTabPanelHtml(siteData, resolvedTab, searchQuery, false, false);
+      tabContentEl.innerHTML = buildTabPanelHtml(siteData, resolvedTab, searchQuery, false, false, viewOpts);
       if (resolvedTab === "diskusi") {
         mountGiscusInto(tabContentEl, siteData);
       }
     }
   }
 
-  function buildTabPanelHtml(siteData, tabKey, searchQuery, includeDrafts, isPreview) {
+  function buildTabPanelHtml(siteData, tabKey, searchQuery, includeDrafts, isPreview, options) {
     switch (tabKey) {
       case "tulisan":
-        return buildTulisanHtml(siteData, searchQuery, includeDrafts);
+        return buildTulisanHtml(siteData, searchQuery, includeDrafts, options);
       case "ebook":
-        return buildEbookHtml(siteData, searchQuery, includeDrafts);
+        return buildEbookHtml(siteData, searchQuery, includeDrafts, options);
       case "flyer":
-        return buildFlyerHtml(siteData, searchQuery, includeDrafts);
+        return buildFlyerHtml(siteData, searchQuery, includeDrafts, options);
       case "audio":
-        return buildAudioHtml(siteData, searchQuery, includeDrafts);
+        return buildAudioHtml(siteData, searchQuery, includeDrafts, options);
       case "video":
-        return buildVideoHtml(siteData, searchQuery, includeDrafts);
+        return buildVideoHtml(siteData, searchQuery, includeDrafts, options);
       case "diskusi":
         return buildDiskusiHtml(siteData, isPreview);
       default:
-        return buildTulisanHtml(siteData, searchQuery, includeDrafts);
+        return buildTulisanHtml(siteData, searchQuery, includeDrafts, options);
     }
   }
 
@@ -1564,7 +1907,10 @@
     const titleDir = detectTextDirection(item.judul);
     modalEls.lightboxTitle.setAttribute("dir", titleDir);
     modalEls.lightboxTitle.innerHTML = formatRichInlineHtml(item.judul, src);
-    modalEls.lightboxMeta.textContent = `${item.tema} · ${item.tanggal}`;
+    const flyerCat = getItemCategory(item, "flyer");
+    const flyerTema = String(item.tema || "").trim();
+    const flyerMetaExtra = flyerTema && flyerTema.toLowerCase() !== flyerCat.toLowerCase() ? `${flyerCat} · ${flyerTema}` : flyerCat;
+    modalEls.lightboxMeta.textContent = `${flyerMetaExtra} · ${item.tanggal}`;
     const capDir = detectTextDirection(item.nasihat);
     modalEls.lightboxCaption.setAttribute("dir", capDir);
     modalEls.lightboxCaption.classList.toggle("text-right", capDir === "rtl");
@@ -1590,15 +1936,22 @@
     if (mobileToggle) mobileToggle.setAttribute("aria-expanded", "false");
   }
 
-  function switchPublicTab(tabKey, shouldScroll) {
-    state.activeTab = tabKey;
-    closeMobileDrawer();
+  function renderPublicCurrentState() {
     renderSiteInto(document, state.currentData || window.SITE_DATA, {
       includeDrafts: false,
       activeTab: state.activeTab,
+      activeCategory: state.activeCategory,
+      categoryViewMode: state.categoryViewMode,
       searchQuery: state.searchQuery,
       isPreview: false,
     });
+  }
+
+  function switchPublicTab(tabKey, shouldScroll, nextCategory) {
+    state.activeTab = tabKey;
+    state.activeCategory = nextCategory !== undefined ? nextCategory : "all";
+    closeMobileDrawer();
+    renderPublicCurrentState();
     if (shouldScroll) {
       const target = document.getElementById("konten-utama");
       if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1621,12 +1974,7 @@
     if (searchInput) {
       searchInput.addEventListener("input", (e) => {
         state.searchQuery = e.target.value;
-        renderSiteInto(document, state.currentData || window.SITE_DATA, {
-          includeDrafts: false,
-          activeTab: state.activeTab,
-          searchQuery: state.searchQuery,
-          isPreview: false,
-        });
+        renderPublicCurrentState();
       });
     }
 
@@ -1634,12 +1982,7 @@
       searchClear.addEventListener("click", () => {
         state.searchQuery = "";
         searchInput.value = "";
-        renderSiteInto(document, state.currentData || window.SITE_DATA, {
-          includeDrafts: false,
-          activeTab: state.activeTab,
-          searchQuery: "",
-          isPreview: false,
-        });
+        renderPublicCurrentState();
         searchInput.focus();
       });
     }
@@ -1648,6 +1991,33 @@
     const publicWrapper = document.getElementById("public-site-wrapper");
     if (publicWrapper) {
       publicWrapper.addEventListener("click", (e) => {
+        const filterCatBtn = e.target.closest("[data-filter-category]");
+        if (filterCatBtn) {
+          state.activeCategory = filterCatBtn.dataset.filterCategory || "all";
+          renderPublicCurrentState();
+          return;
+        }
+        const viewModeBtn = e.target.closest("[data-category-view]");
+        if (viewModeBtn) {
+          state.categoryViewMode = viewModeBtn.dataset.categoryView === "grid" ? "grid" : "grouped";
+          renderPublicCurrentState();
+          return;
+        }
+        const crossBtn = e.target.closest("[data-cross-tab]");
+        if (crossBtn) {
+          switchPublicTab(
+            crossBtn.dataset.crossTab,
+            true,
+            crossBtn.dataset.crossCategory || "all"
+          );
+          return;
+        }
+        const jumpCatBtn = e.target.closest("[data-jump-category]");
+        if (jumpCatBtn) {
+          const targetEl = document.getElementById(`cat-group-${jumpCatBtn.dataset.jumpCategory}`);
+          if (targetEl) targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
         const tabBtn = e.target.closest("[data-tab]");
         if (tabBtn) {
           switchPublicTab(tabBtn.dataset.tab, false);
@@ -1690,7 +2060,7 @@
         if (e.target.closest('[data-action="reset-search"]') && searchInput) {
           state.searchQuery = "";
           searchInput.value = "";
-          switchPublicTab(state.activeTab, false);
+          switchPublicTab(state.activeTab, false, state.activeCategory);
         }
       });
     }
@@ -1764,6 +2134,7 @@
       tampilkanPencarian: true,
       tabAktif: ["tulisan", "ebook", "flyer", "audio", "video", "diskusi"],
       koleksiFont: BUILTIN_FONT_COLLECTION,
+      kategoriMateri: DEFAULT_CONTENT_CATEGORIES.map((c) => ({ ...c })),
     },
     profil: {
       namaWebsite: "Catatan Teduh",
@@ -1797,6 +2168,9 @@
       tampilan.tabAktif = [...DEFAULT_SITE_SCHEMA.tampilan.tabAktif];
     }
     tampilan.koleksiFont = getFontCollection({ tampilan });
+    tampilan.kategoriMateri = Array.isArray(src.tampilan && src.tampilan.kategoriMateri)
+      ? normalizeCategoryEntries(src.tampilan.kategoriMateri)
+      : DEFAULT_CONTENT_CATEGORIES.map((c) => ({ ...c }));
 
     const profil = { ...DEFAULT_SITE_SCHEMA.profil, ...(src.profil || {}) };
     const giscus = { ...DEFAULT_SITE_SCHEMA.giscus, ...(src.giscus || {}) };
@@ -1849,6 +2223,8 @@
     FONT_PRESETS,
     R2_FONT_BASE_URL,
     BUILTIN_FONT_COLLECTION,
+    DEFAULT_CONTENT_CATEGORIES,
+    MEDIA_TAB_KEYS,
     TAB_META,
     deepClone,
     escapeHtml,
@@ -1856,6 +2232,9 @@
     stripRichTags,
     resolveR2FontUrl,
     getFontCollection,
+    getItemCategory,
+    getCategoryCollection,
+    normalizeCategoryEntries,
     syncDynamicFonts,
     detectTextDirection,
     formatRichInlineHtml,
@@ -1875,6 +2254,8 @@
   renderSiteInto(document, initialData, {
     includeDrafts: false,
     activeTab: state.activeTab,
+    activeCategory: state.activeCategory,
+    categoryViewMode: state.categoryViewMode,
     searchQuery: "",
     isPreview: false,
   });
@@ -1887,6 +2268,8 @@
       renderSiteInto(document, freshData, {
         includeDrafts: false,
         activeTab: state.activeTab,
+        activeCategory: state.activeCategory,
+        categoryViewMode: state.categoryViewMode,
         searchQuery: state.searchQuery,
         isPreview: false,
       });
