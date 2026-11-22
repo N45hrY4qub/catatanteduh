@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 19.39.52.
+ * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 20.14.58.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -229,70 +229,7 @@ window.SITE_DATA = {
       "namaFileUnduh": "Kompas-Langkah-Sederhana.pdf"
     }
   ],
-  "flyer": [
-    {
-      "id": "flyer-1",
-      "status": "published",
-      "judul": "Tenang Seperti Air di Pagi Hari",
-      "tema": "Kesabaran",
-      "tanggal": "12 November 2026",
-      "gambar": "/src/assets/images/flyer_sabar_1795070324398.jpg",
-      "nasihat": "Jangan tergesa-gesa menilai sebuah ujian sebagai akhir dari jalan. Sebagaimana kabut pagi yang perlahan tersingkap, hikmah selalu datang bersama kesabaran yang tenang.",
-      "namaFileUnduh": "Flyer-Nasihat-Kesabaran.jpg"
-    },
-    {
-      "id": "flyer-2",
-      "status": "published",
-      "judul": "Cukupkan Hati dengan Syukur",
-      "tema": "Rasa Syukur",
-      "tanggal": "05 November 2026",
-      "gambar": "/src/assets/images/flyer_syukur_1795070324787.jpg",
-      "nasihat": "Kekayaan sejati bukan diukur dari seberapa banyak yang kita kumpulkan, melainkan seberapa tenang hati kita mensyukuri apa yang hari ini sudah ada di genggaman.",
-      "namaFileUnduh": "Flyer-Nasihat-Syukur.jpg"
-    }
-  ],
-  "audio": [
-    {
-      "id": "audio-1",
-      "status": "published",
-      "judul": "Berbaik Sangka pada Ketentuan yang Tertunda",
-      "seri": "Siniar Jeda · Eps. 01",
-      "tanggal": "10 November 2026",
-      "durasi": "00:12",
-      "ringkasan": "Renungan suara singkat tentang bagaimana menyikapi doa dan harapan yang belum terwujud sesuai waktu yang kita inginkan.",
-      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-berbaik-sangka.mp3"
-    },
-    {
-      "id": "audio-2",
-      "status": "published",
-      "judul": "Merawat Niat Baik di Ruang Sunyi",
-      "seri": "Siniar Jeda · Eps. 02",
-      "tanggal": "01 November 2026",
-      "durasi": "00:12",
-      "ringkasan": "Mengapa amalan dan ketulusan yang terjaga tanpa perlu pengakuan manusia justru menjadi penopang keteguhan hati paling kuat.",
-      "audioUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/nasihat-merawat-niat.mp3"
-    }
-  ],
-  "video": [
-    {
-      "id": "video-1",
-      "status": "published",
-      "judul": "Menemukan Irama Hidup yang Seimbang dan Bermakna",
-      "kategori": "Kajian Ringkas",
-      "durasi": "14 menit",
-      "tanggal": "08 November 2026",
-      "youtubeId": "jfKfPfyJRdk",
-      "ringkasan": "Pembahasan tentang menata ulang ritme harian agar kesibukan mencari nafkah tidak menggerus waktu bersama keluarga dan ketenangan ibadah."
-    },
-    {
-      "id": "video-2",
-      "status": "published",
-      "judul": "Empat Kebiasaan Sederhana Penjaga Kejernihan Pikiran",
-      "kategori": "Catatan Kehidupan",
-      "durasi": "11 menit",
-      "tanggal": "27 Oktober 2026",
-      "youtubeId": "5qap5aO4i9A",
-      "ringkasan": "Langkah-langkah praktis mengurangi kebisingan mental melalui kebiasaan membaca, menulis catatan harian, menjaga ucapan, dan menyaring informasi."
-    }
-  ]
+  "flyer": [],
+  "audio": [],
+  "video": []
 };
