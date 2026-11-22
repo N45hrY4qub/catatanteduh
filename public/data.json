@@ -194,34 +194,7 @@
       "deletedAt": "2026-11-22T14:00:22.388Z"
     }
   ],
-  "ebook": [
-    {
-      "id": "ebook-1",
-      "status": "published",
-      "judul": "Seni Merawat Ketenangan Hati",
-      "penulis": "Ahmad Fauzan",
-      "tahun": "2026",
-      "halaman": "42 Halaman",
-      "ukuranFile": "1,8 MB",
-      "sampul": "/src/assets/images/ebook_ketenangan_1795070324246.jpg",
-      "deskripsi": "Kumpulan catatan ringkas tentang mengelola kecemasan, membangun kebiasaan syukur harian, dan menemukan makna dalam keseharian yang sederhana.",
-      "fileUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/seni-merawat-ketenangan-hati.pdf",
-      "namaFileUnduh": "Seni-Merawat-Ketenangan-Hati.pdf"
-    },
-    {
-      "id": "ebook-2",
-      "status": "published",
-      "judul": "Kompas Langkah Sederhana",
-      "penulis": "Ahmad Fauzan",
-      "tahun": "2026",
-      "halaman": "36 Halaman",
-      "ukuranFile": "1,4 MB",
-      "sampul": "/src/assets/images/ebook_langkah_1795070325125.jpg",
-      "deskripsi": "Panduan praktis menyusun prioritas hidup, menjaga konsistensi amal kebaikan yang kecil namun berkelanjutan, serta merawat adab dalam bekerja.",
-      "fileUrl": "https://pub-56b30f3515324b2880e9b93466b7716d.r2.dev/kompas-langkah-sederhana.pdf",
-      "namaFileUnduh": "Kompas-Langkah-Sederhana.pdf"
-    }
-  ],
+  "ebook": [],
   "flyer": [
     {
       "id": "flyer-1",
