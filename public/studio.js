@@ -156,11 +156,18 @@
     floatingFontSelect: document.getElementById("studio-text-font-select"),
     floatingSizeInput: document.getElementById("studio-text-size-input"),
     floatingSizePreset: document.getElementById("studio-text-size-preset"),
+    btnEditorUndo: document.getElementById("btn-editor-undo"),
+    btnEditorRedo: document.getElementById("btn-editor-redo"),
     btnFormatBold: document.getElementById("btn-format-bold"),
     btnFormatItalic: document.getElementById("btn-format-italic"),
     btnFormatUnderline: document.getElementById("btn-format-underline"),
     btnFormatStrike: document.getElementById("btn-format-strike"),
     btnFormatLink: document.getElementById("btn-format-link"),
+    alignButtons: Array.from(document.querySelectorAll("[data-format-align]")),
+    btnFormatQuote: document.getElementById("btn-format-quote"),
+    btnFormatOutdent: document.getElementById("btn-format-outdent"),
+    btnFormatIndent: document.getElementById("btn-format-indent"),
+    btnToggleDropCap: document.getElementById("btn-toggle-dropcap"),
     btnApplyArabBlock: document.getElementById("btn-apply-arab-block"),
     btnClearTextFont: document.getElementById("btn-clear-text-font"),
     floatingLinkRow: document.getElementById("studio-floating-link-row"),
@@ -386,6 +393,7 @@ window.SITE_DATA = ${serialized};
         judul: String(formData.get("judul") || "").trim(),
         kategori,
         tanggal: formattedTanggal,
+        dropCap: formData.get("dropCap") === "1",
         ringkasan: String(formData.get("ringkasan") || "").trim(),
         isi: paragraphs,
       };
@@ -571,6 +579,7 @@ window.SITE_DATA = ${serialized};
     } else {
       els.studioPanelBody.innerHTML = renderTabPengaturan();
     }
+    syncEditorDropCapPreview();
   }
 
   function buildFontSelectOptionsHtml() {
@@ -818,16 +827,36 @@ window.SITE_DATA = ${serialized};
 
     if (!isMultiline) {
       const single = input.replace(/\r?\n+/g, " ");
-      return single ? renderTokens(single) : "";
+      const meta = App.parseRichBlockMeta(single);
+      return meta.inner ? renderTokens(meta.inner) : "";
     }
 
     return input
       .split(/\r?\n/)
       .map((line) => {
-        const dir = App.detectTextDirection(line);
-        const cls = dir === "rtl" ? ' class="text-right leading-[2.0]"' : "";
-        const inner = line ? renderTokens(line) : "<br>";
-        return `<div dir="${dir}"${cls}>${inner}</div>`;
+        const meta = App.parseRichBlockMeta(line);
+        const dir = App.detectTextDirection(meta.inner);
+        const clsList = [];
+        if (meta.isQuote) clsList.push("ct-blockquote");
+        if (meta.align) {
+          clsList.push(`ct-align-${meta.align}`);
+        } else if (dir === "rtl") {
+          clsList.push("text-right", "leading-[2.0]");
+        }
+        if (meta.indent >= 1 && meta.indent <= 4) {
+          clsList.push(`ct-indent-${meta.indent}`);
+        }
+        const tag = meta.isQuote ? "blockquote" : "div";
+        const attrs = [
+          `dir="${dir}"`,
+          meta.align ? `data-rt-align="${App.escapeHtml(meta.align)}"` : "",
+          meta.indent >= 1 && meta.indent <= 4 ? `data-rt-indent="${meta.indent}"` : "",
+          clsList.length ? `class="${clsList.join(" ")}"` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const inner = meta.inner ? renderTokens(meta.inner) : "<br>";
+        return `<${tag} ${attrs}>${inner}</${tag}>`;
       })
       .join("");
   }
@@ -919,6 +948,71 @@ window.SITE_DATA = ${serialized};
     return out;
   }
 
+  function wrapBlockMetaTags(lineText, meta) {
+    let out = String(lineText || "");
+    if (!out) return "";
+    const indent = meta && meta.indent >= 1 && meta.indent <= 4 ? meta.indent : 0;
+    const align =
+      meta && ["left", "center", "right", "justify"].includes(meta.align) ? meta.align : "";
+    const isQuote = Boolean(meta && meta.isQuote);
+    if (indent) out = `[indent=${indent}]${out}[/indent]`;
+    if (align) out = `[align=${align}]${out}[/align]`;
+    if (isQuote) out = `[quote]${out}[/quote]`;
+    return out;
+  }
+
+  function getBlockNodeMeta(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) {
+      return { isQuote: false, align: "", indent: 0 };
+    }
+    const isQuote = el.tagName === "BLOCKQUOTE" || (el.dataset && el.dataset.rtQuote === "true");
+    let align = (el.dataset && el.dataset.rtAlign) || "";
+    if (!align && el.style && el.style.textAlign) {
+      const stAlign = String(el.style.textAlign).toLowerCase();
+      if (["left", "center", "right", "justify"].includes(stAlign)) align = stAlign;
+    }
+    const rawIndent = parseInt((el.dataset && el.dataset.rtIndent) || "0", 10);
+    const indent = Number.isFinite(rawIndent) ? Math.max(0, Math.min(4, rawIndent)) : 0;
+    return { isQuote, align, indent };
+  }
+
+  function applyBlockVisualMeta(el, meta, dir, isMultilineBlock) {
+    if (!el || !el.classList) return;
+    const m = meta || { isQuote: false, align: "", indent: 0 };
+    if (m.align && ["left", "center", "right", "justify"].includes(m.align)) {
+      el.dataset.rtAlign = m.align;
+    } else {
+      delete el.dataset.rtAlign;
+    }
+    if (m.indent >= 1 && m.indent <= 4) {
+      el.dataset.rtIndent = String(m.indent);
+    } else {
+      delete el.dataset.rtIndent;
+    }
+    if (el.tagName !== "BLOCKQUOTE") {
+      if (m.isQuote) {
+        el.dataset.rtQuote = "true";
+      } else {
+        delete el.dataset.rtQuote;
+      }
+    } else {
+      delete el.dataset.rtQuote;
+    }
+
+    el.classList.toggle("ct-blockquote", Boolean(m.isQuote));
+    ["left", "center", "right", "justify"].forEach((a) => {
+      el.classList.toggle(`ct-align-${a}`, m.align === a);
+    });
+    for (let lv = 1; lv <= 4; lv += 1) {
+      el.classList.toggle(`ct-indent-${lv}`, m.indent === lv);
+    }
+    if (isMultilineBlock) {
+      const useRtlDefault = !m.align && dir === "rtl";
+      el.classList.toggle("text-right", useRtlDefault);
+      el.classList.toggle("leading-[2.0]", useRtlDefault);
+    }
+  }
+
   function collectEditorLines(container) {
     const lines = [];
     let inlineBuf = "";
@@ -937,9 +1031,12 @@ window.SITE_DATA = ${serialized};
         ["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"].includes(child.tagName)
       ) {
         flushInline();
+        const blockMeta = getBlockNodeMeta(child);
         const subLines = collectEditorLines(child);
         if (subLines.length) {
-          lines.push(...subLines);
+          subLines.forEach((sl) => {
+            lines.push(sl ? wrapBlockMetaTags(sl, blockMeta) : "");
+          });
         } else {
           lines.push("");
         }
@@ -968,25 +1065,88 @@ window.SITE_DATA = ${serialized};
     const joined = lines.join("\n");
     if (!joined.trim()) return "";
     if (!isMultiline) {
-      return joined.replace(/\r?\n+/g, " ");
+      const single = joined.replace(/\r?\n+/g, " ").trim();
+      const meta = getBlockNodeMeta(editorEl);
+      return wrapBlockMetaTags(single, meta);
     }
     return joined;
+  }
+
+  function syncEditorDropCapPreview(targetEditor) {
+    if (!els.studioPanelBody) return;
+    const isiEditor =
+      targetEditor && targetEditor.dataset && targetEditor.dataset.fieldName === "isi"
+        ? targetEditor
+        : els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]');
+    if (!isiEditor) return;
+
+    isiEditor.classList.remove("prose-dropcap");
+    Array.from(isiEditor.children).forEach((ch) => {
+      if (ch && ch.classList) ch.classList.remove("prose-dropcap");
+    });
+
+    const dropCapInput = document.getElementById("studio-dropcap-input");
+    const isDropCapOn = Boolean(dropCapInput && dropCapInput.checked);
+    if (!isDropCapOn) return;
+
+    const blocks = Array.from(isiEditor.children).filter((el) =>
+      ["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)
+    );
+
+    if (blocks.length > 0) {
+      const firstBlock = blocks[0];
+      const text = String(firstBlock.textContent || "").replace(/\u200B/g, "").trim();
+      if (!text) return;
+      const meta = getBlockNodeMeta(firstBlock);
+      const dir = firstBlock.getAttribute("dir") || App.detectTextDirection(text);
+      if (!meta.isQuote && dir !== "rtl" && meta.align !== "center" && meta.align !== "right") {
+        firstBlock.classList.add("prose-dropcap");
+      }
+      return;
+    }
+
+    const rootText = String(isiEditor.textContent || "").replace(/\u200B/g, "").trim();
+    if (!rootText) return;
+    const rootMeta = getBlockNodeMeta(isiEditor);
+    const rootDir = isiEditor.getAttribute("dir") || App.detectTextDirection(rootText);
+    if (
+      !rootMeta.isQuote &&
+      rootDir !== "rtl" &&
+      rootMeta.align !== "center" &&
+      rootMeta.align !== "right"
+    ) {
+      isiEditor.classList.add("prose-dropcap");
+    }
   }
 
   function updateEditorLineDirections(editorEl) {
     if (!editorEl) return;
     const isMultiline = editorEl.dataset.multiline === "true";
     if (isMultiline) {
-      const blocks = Array.from(editorEl.children).filter((el) => ["DIV", "P"].includes(el.tagName));
+      const blocks = Array.from(editorEl.children).filter((el) =>
+        ["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)
+      );
       blocks.forEach((blk) => {
         const lineText = collectEditorLines(blk).join(" ");
-        const dir = App.detectTextDirection(lineText);
+        const meta = getBlockNodeMeta(blk);
+        const dir = App.detectTextDirection(App.stripRichTags(lineText));
         blk.setAttribute("dir", dir);
-        blk.classList.toggle("text-right", dir === "rtl");
+        applyBlockVisualMeta(blk, meta, dir, true);
       });
+    } else {
+      const meta = getBlockNodeMeta(editorEl);
+      const plain = String(editorEl.textContent || "").replace(/\u200B/g, "");
+      const dir = App.detectTextDirection(plain);
+      editorEl.setAttribute("dir", dir);
+      applyBlockVisualMeta(editorEl, meta, dir, false);
     }
-    const wholeText = serializeEditorToRichText(editorEl, isMultiline);
-    editorEl.setAttribute("dir", App.detectTextDirection(wholeText));
+    if (isMultiline) {
+      const wholeText = serializeEditorToRichText(editorEl, true);
+      editorEl.setAttribute("dir", App.detectTextDirection(wholeText));
+    }
+    if (editorEl.dataset.fieldName === "isi") {
+      syncEditorDropCapPreview(editorEl);
+    }
   }
 
   function syncEditorToBackingField(editorEl, emitInput) {
@@ -1019,6 +1179,24 @@ window.SITE_DATA = ${serialized};
     const minHeight = o.minHeightClass || (multiline ? "min-h-[88px]" : "min-h-[40px]");
     const extraCls = o.extraClass || "";
 
+    let singleBlockAttrs = "";
+    let singleBlockClasses = "";
+    if (!multiline) {
+      const meta = App.parseRichBlockMeta(rawVal.replace(/\r?\n+/g, " "));
+      const clsArr = [];
+      if (meta.isQuote) clsArr.push("ct-blockquote");
+      if (meta.align) clsArr.push(`ct-align-${meta.align}`);
+      if (meta.indent >= 1 && meta.indent <= 4) clsArr.push(`ct-indent-${meta.indent}`);
+      singleBlockClasses = clsArr.join(" ");
+      singleBlockAttrs = [
+        meta.isQuote ? 'data-rt-quote="true"' : "",
+        meta.align ? `data-rt-align="${App.escapeHtml(meta.align)}"` : "",
+        meta.indent >= 1 && meta.indent <= 4 ? `data-rt-indent="${meta.indent}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
     return `
       <textarea
         id="${App.escapeHtml(backingId)}"
@@ -1037,8 +1215,9 @@ window.SITE_DATA = ${serialized};
         data-multiline="${multiline ? "true" : "false"}"
         data-placeholder="${App.escapeHtml(o.placeholder || o.label || "")}"
         ${o.required ? 'data-editor-required="true"' : ""}
+        ${singleBlockAttrs}
         dir="${App.detectTextDirection(rawVal)}"
-        class="ct-rich-editor w-full px-3.5 py-2 border border-stone-200 focus:border-emerald-700 rounded-xl text-sm bg-white transition-colors ${minHeight} ${extraCls}"
+        class="ct-rich-editor w-full px-3.5 py-2 border border-stone-200 focus:border-emerald-700 rounded-xl text-sm bg-white transition-colors ${minHeight} ${singleBlockClasses} ${extraCls}"
       >${richTextToEditorHtml(rawVal, multiline)}</div>
     `;
   }
@@ -1704,7 +1883,9 @@ window.SITE_DATA = ${serialized};
     let fieldsHtml = "";
     if (type === "tulisan") {
       const isiText = existing && Array.isArray(existing.isi) ? existing.isi.join("\n\n") : "";
+      const dropCapActive = existing ? existing.dropCap !== false : false;
       fieldsHtml = `
+        <input type="checkbox" id="studio-dropcap-input" name="dropCap" value="1" class="sr-only" ${dropCapActive ? "checked" : ""} />
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">Judul Artikel</label>
           ${renderRichTextFieldHtml({
@@ -1738,6 +1919,7 @@ window.SITE_DATA = ${serialized};
             value: isiText,
             multiline: true,
             minHeightClass: "min-h-[240px] leading-relaxed",
+            extraClass: "ct-editor-article-prose",
             required: true,
           })}
         </div>
@@ -2533,6 +2715,257 @@ window.SITE_DATA = ${serialized};
       }
     });
 
+    const editorHistoryMap = new WeakMap();
+    const editorHistoryTimers = new WeakMap();
+
+    function getSelectionOffsets(editorEl) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return { start: 0, end: 0 };
+      const range = sel.getRangeAt(0);
+      if (!editorEl.contains(range.commonAncestorContainer)) return { start: 0, end: 0 };
+
+      const calcOffset = (targetNode, targetOffset) => {
+        let total = 0;
+        if (targetNode === editorEl) {
+          for (let i = 0; i < targetOffset && i < editorEl.childNodes.length; i += 1) {
+            total += String(editorEl.childNodes[i].textContent || "").length;
+          }
+          return total;
+        }
+        const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null);
+        let node = walker.nextNode();
+        while (node) {
+          if (node === targetNode) {
+            return total + Math.min(targetOffset, node.nodeValue.length);
+          }
+          total += node.nodeValue.length;
+          node = walker.nextNode();
+        }
+        try {
+          const pre = document.createRange();
+          pre.selectNodeContents(editorEl);
+          pre.setEnd(targetNode, targetOffset);
+          return pre.toString().length;
+        } catch (_e) {
+          return total;
+        }
+      };
+
+      const start = calcOffset(range.startContainer, range.startOffset);
+      const end = range.collapsed ? start : calcOffset(range.endContainer, range.endOffset);
+      return { start, end };
+    }
+
+    function restoreSelectionOffsets(editorEl, startOff, endOff) {
+      const sel = window.getSelection();
+      if (!sel) return null;
+      const targetStart = Math.max(0, Number(startOff) || 0);
+      const targetEnd = Math.max(targetStart, Number(endOff) || targetStart);
+
+      const findPoint = (offset) => {
+        const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null);
+        let acc = 0;
+        let lastNode = null;
+        let node = walker.nextNode();
+        while (node) {
+          const len = node.nodeValue.length;
+          if (acc + len >= offset) {
+            return { node, offset: Math.max(0, offset - acc) };
+          }
+          acc += len;
+          lastNode = node;
+          node = walker.nextNode();
+        }
+        if (lastNode) {
+          return { node: lastNode, offset: lastNode.nodeValue.length };
+        }
+        return { node: editorEl, offset: editorEl.childNodes.length };
+      };
+
+      const p1 = findPoint(targetStart);
+      const p2 = targetEnd === targetStart ? p1 : findPoint(targetEnd);
+      const r = document.createRange();
+      try {
+        r.setStart(p1.node, p1.offset);
+        r.setEnd(p2.node, p2.offset);
+      } catch (_e) {
+        r.selectNodeContents(editorEl);
+        r.collapse(false);
+      }
+      sel.removeAllRanges();
+      sel.addRange(r);
+      studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+      return r;
+    }
+
+    function createEditorSnapshot(editorEl) {
+      const offsets = getSelectionOffsets(editorEl);
+      return {
+        html: editorEl.innerHTML,
+        selStart: offsets.start,
+        selEnd: offsets.end,
+        rtQuote: (editorEl.dataset && editorEl.dataset.rtQuote) || "",
+        rtAlign: (editorEl.dataset && editorEl.dataset.rtAlign) || "",
+        rtIndent: (editorEl.dataset && editorEl.dataset.rtIndent) || "",
+      };
+    }
+
+    function snapshotsEqual(a, b) {
+      if (!a || !b) return false;
+      return (
+        a.html === b.html &&
+        a.rtQuote === b.rtQuote &&
+        a.rtAlign === b.rtAlign &&
+        a.rtIndent === b.rtIndent
+      );
+    }
+
+    function ensureEditorHistory(editorEl) {
+      if (!editorEl) return null;
+      let hist = editorHistoryMap.get(editorEl);
+      if (!hist) {
+        hist = {
+          entries: [createEditorSnapshot(editorEl)],
+          index: 0,
+        };
+        editorHistoryMap.set(editorEl, hist);
+      }
+      return hist;
+    }
+
+    function syncUndoRedoButtons(editorEl) {
+      const hist = editorEl ? ensureEditorHistory(editorEl) : null;
+      const curSnap = editorEl ? createEditorSnapshot(editorEl) : null;
+      const hasPendingDiff = Boolean(
+        hist && curSnap && !snapshotsEqual(curSnap, hist.entries[hist.index])
+      );
+      const canUndo = Boolean(hist && (hist.index > 0 || hasPendingDiff));
+      const canRedo = Boolean(hist && hist.index < hist.entries.length - 1);
+
+      if (els.btnEditorUndo) els.btnEditorUndo.disabled = !canUndo;
+      if (els.btnEditorRedo) els.btnEditorRedo.disabled = !canRedo;
+    }
+
+    function commitEditorHistory(editorEl) {
+      if (!editorEl) return;
+      const pendingTimer = editorHistoryTimers.get(editorEl);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        editorHistoryTimers.delete(editorEl);
+      }
+      const hist = ensureEditorHistory(editorEl);
+      const snap = createEditorSnapshot(editorEl);
+      if (snapshotsEqual(snap, hist.entries[hist.index])) {
+        syncUndoRedoButtons(editorEl);
+        return;
+      }
+      if (hist.index < hist.entries.length - 1) {
+        hist.entries = hist.entries.slice(0, hist.index + 1);
+      }
+      hist.entries.push(snap);
+      if (hist.entries.length > 80) {
+        hist.entries.shift();
+      }
+      hist.index = hist.entries.length - 1;
+      syncUndoRedoButtons(editorEl);
+    }
+
+    function scheduleEditorHistoryCommit(editorEl) {
+      if (!editorEl) return;
+      ensureEditorHistory(editorEl);
+      const prevTimer = editorHistoryTimers.get(editorEl);
+      if (prevTimer) clearTimeout(prevTimer);
+      const timer = setTimeout(() => {
+        editorHistoryTimers.delete(editorEl);
+        commitEditorHistory(editorEl);
+      }, 350);
+      editorHistoryTimers.set(editorEl, timer);
+      syncUndoRedoButtons(editorEl);
+    }
+
+    function flushEditorHistory(editorEl) {
+      if (!editorEl) return;
+      const pendingTimer = editorHistoryTimers.get(editorEl);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        editorHistoryTimers.delete(editorEl);
+        commitEditorHistory(editorEl);
+      } else {
+        ensureEditorHistory(editorEl);
+      }
+    }
+
+    function applyHistorySnapshot(editorEl, snap) {
+      if (!editorEl || !snap) return;
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        editorEl.innerHTML = snap.html;
+        if (editorEl.dataset.multiline !== "true") {
+          if (snap.rtQuote) editorEl.dataset.rtQuote = snap.rtQuote;
+          else delete editorEl.dataset.rtQuote;
+          if (snap.rtAlign) editorEl.dataset.rtAlign = snap.rtAlign;
+          else delete editorEl.dataset.rtAlign;
+          if (snap.rtIndent) editorEl.dataset.rtIndent = snap.rtIndent;
+          else delete editorEl.dataset.rtIndent;
+        }
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, snap.selStart, snap.selEnd);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function performEditorUndo(targetEditor) {
+      const editorEl =
+        targetEditor ||
+        (studio.lastTextControl &&
+        studio.lastTextControl.el &&
+        document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl.el
+          : null);
+      if (!editorEl) return;
+      flushEditorHistory(editorEl);
+      const hist = ensureEditorHistory(editorEl);
+      const curSnap = createEditorSnapshot(editorEl);
+      if (!snapshotsEqual(curSnap, hist.entries[hist.index])) {
+        commitEditorHistory(editorEl);
+      }
+      if (hist.index <= 0) {
+        syncUndoRedoButtons(editorEl);
+        return;
+      }
+      hist.index -= 1;
+      applyHistorySnapshot(editorEl, hist.entries[hist.index]);
+      syncUndoRedoButtons(editorEl);
+    }
+
+    function performEditorRedo(targetEditor) {
+      const editorEl =
+        targetEditor ||
+        (studio.lastTextControl &&
+        studio.lastTextControl.el &&
+        document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl.el
+          : null);
+      if (!editorEl) return;
+      flushEditorHistory(editorEl);
+      const hist = ensureEditorHistory(editorEl);
+      if (hist.index >= hist.entries.length - 1) {
+        syncUndoRedoButtons(editorEl);
+        return;
+      }
+      hist.index += 1;
+      applyHistorySnapshot(editorEl, hist.entries[hist.index]);
+      syncUndoRedoButtons(editorEl);
+    }
+
     // Delegasi Input & Klik pada Sidebar Editor Kiri
     els.studioPanelBody.addEventListener("input", (e) => {
       const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
@@ -2542,6 +2975,7 @@ window.SITE_DATA = ${serialized};
         }
         updateEditorLineDirections(richEditor);
         syncEditorToBackingField(richEditor, true);
+        scheduleEditorHistoryCommit(richEditor);
         return;
       }
 
@@ -2563,8 +2997,122 @@ window.SITE_DATA = ${serialized};
 
     els.studioPanelBody.addEventListener("keydown", (e) => {
       const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
-      if (richEditor && e.key === "Enter" && richEditor.dataset.multiline !== "true") {
+      if (!richEditor) return;
+
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          performEditorUndo(richEditor);
+          return;
+        }
+        if (key === "y" || (key === "z" && e.shiftKey)) {
+          e.preventDefault();
+          performEditorRedo(richEditor);
+          return;
+        }
+      }
+
+      if (e.key === "Enter" && richEditor.dataset.multiline !== "true") {
         e.preventDefault();
+        return;
+      }
+
+      // Tekan Enter 2x di akhir blockquote -> kembali ke paragraf normal
+      if (e.key === "Enter" && !e.shiftKey && richEditor.dataset.multiline === "true") {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
+          const r = sel.getRangeAt(0);
+          let cur = r.startContainer;
+          let quoteBlk = null;
+          while (cur && cur !== richEditor) {
+            if (cur.nodeType === Node.ELEMENT_NODE && cur.tagName === "BLOCKQUOTE" && cur.parentNode === richEditor) {
+              quoteBlk = cur;
+              break;
+            }
+            cur = cur.parentNode;
+          }
+          if (quoteBlk) {
+            const plainQuote = String(quoteBlk.textContent || "").replace(/\u200B/g, "").trim();
+            const isCaretAtEndOfQuote = (() => {
+              try {
+                const tailRange = document.createRange();
+                tailRange.selectNodeContents(quoteBlk);
+                tailRange.setStart(r.startContainer, r.startOffset);
+                return String(tailRange.toString() || "").replace(/\u200B/g, "").trim() === "";
+              } catch (_e) {
+                return false;
+              }
+            })();
+
+            // Cek 1: blockquote baru sudah kosong (setelah Enter pertama memisah blok)
+            // Cek 2: baris terakhir di dalam blockquote berupa <br><br> kosong tepat sebelum kursor
+            const childNodes = Array.from(quoteBlk.childNodes);
+            let brTailCount = 0;
+            for (let i = childNodes.length - 1; i >= 0; i -= 1) {
+              const ch = childNodes[i];
+              if (ch.nodeType === Node.TEXT_NODE && !String(ch.nodeValue || "").replace(/\u200B/g, "").trim()) {
+                continue;
+              }
+              if (ch.nodeType === Node.ELEMENT_NODE && ch.tagName === "BR") {
+                brTailCount += 1;
+              } else {
+                break;
+              }
+            }
+
+            if (plainQuote === "" || (isCaretAtEndOfQuote && brTailCount >= 2)) {
+              e.preventDefault();
+              flushEditorHistory(richEditor);
+              studio.suppressEditorTrack = true;
+              try {
+                const newDiv = document.createElement("div");
+                newDiv.setAttribute("dir", "ltr");
+                newDiv.innerHTML = "<br>";
+
+                if (plainQuote === "") {
+                  quoteBlk.parentNode.replaceChild(newDiv, quoteBlk);
+                } else {
+                  let removed = 0;
+                  while (quoteBlk.lastChild && removed < brTailCount) {
+                    const lc = quoteBlk.lastChild;
+                    if (lc.nodeType === Node.TEXT_NODE && !String(lc.nodeValue || "").trim()) {
+                      quoteBlk.removeChild(lc);
+                      continue;
+                    }
+                    if (lc.nodeType === Node.ELEMENT_NODE && lc.tagName === "BR") {
+                      quoteBlk.removeChild(lc);
+                      removed += 1;
+                    } else {
+                      break;
+                    }
+                  }
+                  if (quoteBlk.nextSibling) {
+                    quoteBlk.parentNode.insertBefore(newDiv, quoteBlk.nextSibling);
+                  } else {
+                    quoteBlk.parentNode.appendChild(newDiv);
+                  }
+                }
+
+                const caretR = document.createRange();
+                caretR.setStart(newDiv, 0);
+                caretR.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(caretR);
+                studio.lastTextControl = { el: richEditor, range: caretR.cloneRange() };
+
+                updateEditorLineDirections(richEditor);
+                syncEditorToBackingField(richEditor, true);
+              } finally {
+                studio.suppressEditorTrack = false;
+              }
+              commitEditorHistory(richEditor);
+              syncFloatingBarControlsFromEditor(richEditor, studio.lastTextControl.range);
+              positionFloatingFontBar(richEditor);
+              return;
+            }
+          }
+        }
       }
     });
 
@@ -2572,6 +3120,7 @@ window.SITE_DATA = ${serialized};
       const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
       if (!richEditor) return;
       e.preventDefault();
+      flushEditorHistory(richEditor);
       const rawPaste = (e.clipboardData || window.clipboardData).getData("text/plain") || "";
       const pasteText =
         richEditor.dataset.multiline === "true" ? rawPaste : rawPaste.replace(/\r?\n+/g, " ");
@@ -2591,6 +3140,7 @@ window.SITE_DATA = ${serialized};
       }
       updateEditorLineDirections(richEditor);
       syncEditorToBackingField(richEditor, true);
+      commitEditorHistory(richEditor);
     });
 
     els.studioPanelBody.addEventListener("change", async (e) => {
@@ -2834,6 +3384,66 @@ window.SITE_DATA = ${serialized};
       setFormatButtonActive(els.btnFormatUnderline, isUnderline);
       setFormatButtonActive(els.btnFormatStrike, isStrike);
       setFormatButtonActive(els.btnFormatLink, isLink);
+
+      // Status perataan, blockquote, indentasi, dan Drop Cap
+      let activeBlocks = [];
+      if (editorEl) {
+        if (editorEl.dataset.multiline !== "true") {
+          activeBlocks = [editorEl];
+        } else {
+          const allBlocks = getDirectLineBlocks(editorEl);
+          if (range && editorEl.contains(range.startContainer)) {
+            const matched = allBlocks.filter((blk) => {
+              try {
+                return range.intersectsNode(blk);
+              } catch (_e) {
+                return false;
+              }
+            });
+            if (matched.length) {
+              activeBlocks = matched;
+            } else {
+              const singleBlk = findEnclosingBlockLine(range.startContainer, editorEl);
+              if (singleBlk) activeBlocks = [singleBlk];
+            }
+          }
+          if (!activeBlocks.length && allBlocks.length) {
+            activeBlocks = [allBlocks[0]];
+          }
+        }
+      }
+
+      const primaryBlock = activeBlocks[0] || editorEl;
+      const blockMeta = getBlockNodeMeta(primaryBlock);
+      const effectiveDir =
+        (primaryBlock && primaryBlock.getAttribute && primaryBlock.getAttribute("dir")) ||
+        (editorEl && editorEl.getAttribute && editorEl.getAttribute("dir")) ||
+        "ltr";
+      const activeAlign = blockMeta.align || (effectiveDir === "rtl" ? "right" : "left");
+
+      if (els.alignButtons && els.alignButtons.length) {
+        els.alignButtons.forEach((btn) => {
+          setFormatButtonActive(btn, btn.dataset.formatAlign === activeAlign);
+        });
+      }
+
+      const isQuoteActive =
+        activeBlocks.length > 0 && activeBlocks.every((blk) => getBlockNodeMeta(blk).isQuote);
+      setFormatButtonActive(els.btnFormatQuote, isQuoteActive);
+
+      const indentLevels = activeBlocks.map((blk) => getBlockNodeMeta(blk).indent);
+      const minIndent = indentLevels.length ? Math.min(...indentLevels) : 0;
+      const maxIndent = indentLevels.length ? Math.max(...indentLevels) : 0;
+      if (els.btnFormatOutdent) els.btnFormatOutdent.disabled = maxIndent <= 0;
+      if (els.btnFormatIndent) els.btnFormatIndent.disabled = minIndent >= 4;
+
+      const dropCapInput = document.getElementById("studio-dropcap-input");
+      if (els.btnToggleDropCap) {
+        els.btnToggleDropCap.disabled = !dropCapInput;
+        setFormatButtonActive(els.btnToggleDropCap, Boolean(dropCapInput && dropCapInput.checked));
+      }
+
+      syncUndoRedoButtons(editorEl);
     }
 
     function syncFloatingBarControlsFromEditor(editorEl, range) {
@@ -2897,6 +3507,8 @@ window.SITE_DATA = ${serialized};
         clearTimeout(studio.floatingBlurTimer);
         studio.floatingBlurTimer = null;
       }
+
+      ensureEditorHistory(editorEl);
 
       const sel = window.getSelection();
       let savedRange = null;
@@ -3114,6 +3726,7 @@ window.SITE_DATA = ${serialized};
       if (!targetInfo || !els.floatingFontSelect || !els.floatingSizeInput) return;
 
       const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
       const fontId = mode === "clear" ? "" : els.floatingFontSelect.value || "";
       const rawSizeNum = parseInt(String(els.floatingSizeInput.value || "").replace(/[^0-9]/g, ""), 10);
       const sizeVal = mode === "clear" ? 0 : rawSizeNum >= 10 && rawSizeNum <= 72 ? rawSizeNum : 0;
@@ -3401,6 +4014,8 @@ window.SITE_DATA = ${serialized};
         studio.suppressEditorTrack = false;
       }
 
+      commitEditorHistory(editorEl);
+
       // Pastikan dropdown font & ukuran di toolbar tetap sesuai nilai yang baru dipilih
       if (mode !== "clear") {
         if (els.floatingFontSelect && Array.from(els.floatingFontSelect.options).some((o) => o.value === fontId)) {
@@ -3417,6 +4032,8 @@ window.SITE_DATA = ${serialized};
         }
       }
 
+      syncFloatingFormatButtons(editorEl, studio.lastTextControl ? studio.lastTextControl.range : null);
+
       if (returnFocus) {
         positionFloatingFontBar(editorEl);
       }
@@ -3429,6 +4046,7 @@ window.SITE_DATA = ${serialized};
           : null;
       if (!targetInfo) return;
       const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
 
       let range = null;
       const liveSel = window.getSelection();
@@ -3473,8 +4091,241 @@ window.SITE_DATA = ${serialized};
         studio.suppressEditorTrack = false;
       }
 
+      commitEditorHistory(editorEl);
       syncFloatingBarControlsFromEditor(editorEl, studio.lastTextControl ? studio.lastTextControl.range : null);
       positionFloatingFontBar(editorEl);
+    }
+
+    function ensureMultilineBlocks(editorEl) {
+      if (!editorEl || editorEl.dataset.multiline !== "true") return;
+      const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE"]);
+      const children = Array.from(editorEl.childNodes);
+      const hasLoose = children.some(
+        (ch) => ch.nodeType !== Node.ELEMENT_NODE || !blockTags.has(ch.tagName)
+      );
+
+      if (!children.length) {
+        const div = document.createElement("div");
+        div.setAttribute("dir", "ltr");
+        div.innerHTML = "<br>";
+        editorEl.appendChild(div);
+        const r = document.createRange();
+        r.setStart(div, 0);
+        r.collapse(true);
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(r);
+        }
+        studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+        return;
+      }
+
+      if (!hasLoose) return;
+
+      const offsets = getSelectionOffsets(editorEl);
+      let currentDiv = null;
+      children.forEach((ch) => {
+        if (ch.nodeType === Node.ELEMENT_NODE && blockTags.has(ch.tagName)) {
+          currentDiv = null;
+          return;
+        }
+        if (!currentDiv) {
+          currentDiv = document.createElement("div");
+          currentDiv.setAttribute("dir", "ltr");
+          editorEl.insertBefore(currentDiv, ch);
+        }
+        currentDiv.appendChild(ch);
+      });
+      restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+    }
+
+    function getActiveBlocksForCommand(editorEl, fallbackRange) {
+      if (!editorEl) return [];
+      if (editorEl.dataset.multiline !== "true") {
+        return [editorEl];
+      }
+
+      ensureMultilineBlocks(editorEl);
+      let range = null;
+      const liveSel = window.getSelection();
+      if (liveSel && liveSel.rangeCount > 0) {
+        const lr = liveSel.getRangeAt(0);
+        if (editorEl.contains(lr.commonAncestorContainer)) {
+          range = lr.cloneRange();
+        }
+      }
+      if (!range && fallbackRange && editorEl.contains(fallbackRange.commonAncestorContainer)) {
+        range = fallbackRange.cloneRange();
+      }
+      if (range) {
+        trimTrailingZeroOffsetBlockBoundary(range, editorEl);
+      }
+
+      const allBlocks = getDirectLineBlocks(editorEl);
+      if (range) {
+        const hitBlocks = allBlocks.filter((blk) => {
+          try {
+            return range.intersectsNode(blk);
+          } catch (_e) {
+            return false;
+          }
+        });
+        if (hitBlocks.length) return hitBlocks;
+        const single = findEnclosingBlockLine(range.startContainer, editorEl);
+        if (single) return [single];
+      }
+      return allBlocks.length ? [allBlocks[0]] : [];
+    }
+
+    function applyBlockAlignment(alignVal) {
+      const cleanAlign = ["left", "center", "right", "justify"].includes(alignVal) ? alignVal : "left";
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        blocks.forEach((blk) => {
+          const meta = getBlockNodeMeta(blk);
+          meta.align = cleanAlign;
+          const dir = blk.getAttribute("dir") || "ltr";
+          applyBlockVisualMeta(blk, meta, dir, editorEl.dataset.multiline === "true");
+        });
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function toggleBlockquote() {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        const allAreQuotes = blocks.length > 0 && blocks.every((blk) => getBlockNodeMeta(blk).isQuote);
+        const nextIsQuote = !allAreQuotes;
+
+        if (editorEl.dataset.multiline !== "true") {
+          const meta = getBlockNodeMeta(editorEl);
+          meta.isQuote = nextIsQuote;
+          applyBlockVisualMeta(editorEl, meta, editorEl.getAttribute("dir") || "ltr", false);
+        } else {
+          blocks.forEach((blk) => {
+            const meta = getBlockNodeMeta(blk);
+            meta.isQuote = nextIsQuote;
+            const targetTag = nextIsQuote ? "BLOCKQUOTE" : "DIV";
+            if (blk.tagName !== targetTag) {
+              const replacement = document.createElement(targetTag.toLowerCase());
+              while (blk.firstChild) {
+                replacement.appendChild(blk.firstChild);
+              }
+              const dir = blk.getAttribute("dir") || "ltr";
+              replacement.setAttribute("dir", dir);
+              applyBlockVisualMeta(replacement, meta, dir, true);
+              blk.parentNode.replaceChild(replacement, blk);
+            } else {
+              const dir = blk.getAttribute("dir") || "ltr";
+              applyBlockVisualMeta(blk, meta, dir, true);
+            }
+          });
+        }
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function adjustBlockIndent(delta) {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        blocks.forEach((blk) => {
+          const meta = getBlockNodeMeta(blk);
+          meta.indent = Math.max(0, Math.min(4, (meta.indent || 0) + delta));
+          const dir = blk.getAttribute("dir") || "ltr";
+          applyBlockVisualMeta(blk, meta, dir, editorEl.dataset.multiline === "true");
+        });
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function toggleArticleDropCap() {
+      const dropCapInput = document.getElementById("studio-dropcap-input");
+      if (!dropCapInput) return;
+      dropCapInput.checked = !dropCapInput.checked;
+      syncEditorDropCapPreview();
+
+      const editorEl =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl.el
+          : null;
+      if (editorEl) {
+        syncFloatingBarControlsFromEditor(
+          editorEl,
+          studio.lastTextControl ? studio.lastTextControl.range : null
+        );
+        positionFloatingFontBar(editorEl);
+      } else if (els.btnToggleDropCap) {
+        setFormatButtonActive(els.btnToggleDropCap, dropCapInput.checked);
+      }
+      renderLivePreview();
     }
 
     function openFloatingLinkRow() {
@@ -3546,6 +4397,7 @@ window.SITE_DATA = ${serialized};
       if (!targetInfo) return;
 
       const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
       let range =
         targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
           ? targetInfo.range.cloneRange()
@@ -3594,6 +4446,7 @@ window.SITE_DATA = ${serialized};
         studio.suppressEditorTrack = false;
       }
 
+      commitEditorHistory(editorEl);
       closeFloatingLinkRow(true);
     }
 
@@ -3605,6 +4458,7 @@ window.SITE_DATA = ${serialized};
       if (!targetInfo) return;
 
       const editorEl = targetInfo.el;
+      flushEditorHistory(editorEl);
       const range =
         targetInfo.range && editorEl.contains(targetInfo.range.commonAncestorContainer)
           ? targetInfo.range.cloneRange()
@@ -3643,6 +4497,7 @@ window.SITE_DATA = ${serialized};
         studio.suppressEditorTrack = false;
       }
 
+      commitEditorHistory(editorEl);
       closeFloatingLinkRow(true);
     }
 
@@ -3679,6 +4534,13 @@ window.SITE_DATA = ${serialized};
       });
     }
 
+    if (els.btnEditorUndo) {
+      els.btnEditorUndo.addEventListener("click", () => performEditorUndo());
+    }
+    if (els.btnEditorRedo) {
+      els.btnEditorRedo.addEventListener("click", () => performEditorRedo());
+    }
+
     if (els.btnFormatBold) {
       els.btnFormatBold.addEventListener("click", () => toggleInlineFormat("bold"));
     }
@@ -3699,6 +4561,23 @@ window.SITE_DATA = ${serialized};
           openFloatingLinkRow();
         }
       });
+    }
+    if (els.alignButtons && els.alignButtons.length) {
+      els.alignButtons.forEach((btn) => {
+        btn.addEventListener("click", () => applyBlockAlignment(btn.dataset.formatAlign));
+      });
+    }
+    if (els.btnFormatQuote) {
+      els.btnFormatQuote.addEventListener("click", toggleBlockquote);
+    }
+    if (els.btnFormatOutdent) {
+      els.btnFormatOutdent.addEventListener("click", () => adjustBlockIndent(-1));
+    }
+    if (els.btnFormatIndent) {
+      els.btnFormatIndent.addEventListener("click", () => adjustBlockIndent(1));
+    }
+    if (els.btnToggleDropCap) {
+      els.btnToggleDropCap.addEventListener("click", toggleArticleDropCap);
     }
     if (els.btnApplyTextLink) {
       els.btnApplyTextLink.addEventListener("click", applyFloatingLink);

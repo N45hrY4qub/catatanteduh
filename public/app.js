@@ -337,10 +337,79 @@
     return String(str || "")
       .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\]/gi, "")
       .replace(/\[\/(?:font|arab)\]/gi, "")
-      .replace(/\[(?:b|i|u|s)\]/gi, "")
-      .replace(/\[\/(?:b|i|u|s)\]/gi, "")
+      .replace(/\[(?:b|i|u|s|quote)\]/gi, "")
+      .replace(/\[\/(?:b|i|u|s|quote)\]/gi, "")
+      .replace(/\[align=(?:left|center|right|justify)\]/gi, "")
+      .replace(/\[\/align\]/gi, "")
+      .replace(/\[indent=[0-4]\]/gi, "")
+      .replace(/\[\/indent\]/gi, "")
+      .replace(/<\/?blockquote[^>]*>/gi, "")
       .replace(/\[url=[^\]]+\]/gi, "")
       .replace(/\[\/url\]/gi, "");
+  }
+
+  function parseRichBlockMeta(rawBlock) {
+    let text = String(rawBlock || "").trim();
+    let isQuote = false;
+    let align = "";
+    let indent = 0;
+    let changed = true;
+
+    while (changed && text) {
+      changed = false;
+      let m;
+      if ((m = text.match(/^\[quote\]([\s\S]*)\[\/quote\]$/i))) {
+        isQuote = true;
+        text = m[1].trim();
+        changed = true;
+      } else if ((m = text.match(/^<blockquote[^>]*>([\s\S]*)<\/blockquote>$/i))) {
+        isQuote = true;
+        text = m[1].trim();
+        changed = true;
+      } else if ((m = text.match(/^\[align=(left|center|right|justify)\]([\s\S]*)\[\/align\]$/i))) {
+        if (!align) align = m[1].toLowerCase();
+        text = m[2].trim();
+        changed = true;
+      } else if ((m = text.match(/^\[indent=([1-4])\]([\s\S]*)\[\/indent\]$/i))) {
+        if (!indent) indent = Math.min(4, Math.max(1, parseInt(m[1], 10) || 0));
+        text = m[2].trim();
+        changed = true;
+      }
+    }
+
+    return {
+      isQuote,
+      align,
+      indent,
+      inner: text,
+    };
+  }
+
+  function buildRichBlockClasses(meta, dir, isFirstNormalCandidate, dropCapEnabled) {
+    const classes = [];
+    const m = meta || {};
+    if (m.isQuote) {
+      classes.push("ct-blockquote");
+    }
+    if (m.align && ["left", "center", "right", "justify"].includes(m.align)) {
+      classes.push(`ct-align-${m.align}`);
+    } else if (dir === "rtl") {
+      classes.push("text-right", "leading-[2.15]");
+    }
+    if (m.indent >= 1 && m.indent <= 4) {
+      classes.push(`ct-indent-${m.indent}`);
+    }
+    const allowDropCap =
+      Boolean(dropCapEnabled) &&
+      Boolean(isFirstNormalCandidate) &&
+      !m.isQuote &&
+      dir !== "rtl" &&
+      m.align !== "center" &&
+      m.align !== "right";
+    if (allowDropCap) {
+      classes.push("prose-dropcap");
+    }
+    return classes.join(" ");
   }
 
   function detectTextDirection(rawText) {
@@ -377,8 +446,12 @@
   }
 
   function formatRichInlineHtml(rawText, siteData) {
-    const input = String(rawText || "");
-    if (!input) return "";
+    const rawStr = String(rawText || "");
+    if (!rawStr) return "";
+    const outerMeta = parseRichBlockMeta(rawStr);
+    const hasOuterBlock = outerMeta.isQuote || Boolean(outerMeta.align) || outerMeta.indent > 0;
+    const input = hasOuterBlock ? outerMeta.inner : rawStr;
+    if (!input && !hasOuterBlock) return "";
 
     const fonts = getFontCollection(siteData || state.currentData || window.SITE_DATA || {});
     const fontMap = new Map(fonts.map((f) => [f.id, f]));
@@ -465,33 +538,53 @@
       result += wrapArabicRunsInEscaped(escapeHtml(input.slice(lastIndex)));
     }
 
+    if (hasOuterBlock) {
+      const dir = detectTextDirection(input);
+      const cls = buildRichBlockClasses(outerMeta, dir, false, false);
+      const wrapTag = outerMeta.isQuote ? "blockquote" : "span";
+      const extraBlockCls = outerMeta.isQuote ? "" : "block ";
+      return `<${wrapTag} dir="${dir}" class="${extraBlockCls}${cls}">${result}</${wrapTag}>`;
+    }
+
     return result;
   }
 
   function distributeMultilineRichTags(rawText) {
-    return String(rawText || "").replace(
-      /\[(font|arab|b|i|u|s|url)((?:=[^\]]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
-      (_full, tag, attrs, inner) => {
-        if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
-        return inner
-          .split(/\r?\n/)
-          .map((part) => (part ? `[${tag}${attrs}]${part}[/${tag}]` : ""))
-          .join("\n");
-      }
-    );
+    let out = String(rawText || "");
+    for (let pass = 0; pass < 3; pass += 1) {
+      const next = out.replace(
+        /\[(quote|align|indent|font|arab|b|i|u|s|url)((?:=[^\]]+)?(?:\s+size=\d{1,3})?)\]([\s\S]*?)\[\/\1\]/gi,
+        (_full, tag, attrs, inner) => {
+          if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
+          return inner
+            .split(/\r?\n/)
+            .map((part) => (part ? `[${tag}${attrs}]${part}[/${tag}]` : ""))
+            .join("\n");
+        }
+      );
+      if (next === out) break;
+      out = next;
+    }
+    return out;
   }
 
   function formatRichLinesHtml(rawText, siteData) {
     const normalized = distributeMultilineRichTags(rawText);
     const lines = normalized.split(/\r?\n+/).filter((line) => line !== "");
     if (lines.length <= 1) {
-      return formatRichInlineHtml(lines[0] !== undefined ? lines[0] : normalized, siteData);
+      const single = lines[0] !== undefined ? lines[0] : normalized;
+      return formatRichInlineHtml(single, siteData);
     }
     return lines
       .map((line) => {
-        const dir = detectTextDirection(line);
-        const cls = dir === "rtl" ? "block text-right leading-[2.05]" : "block";
-        return `<span dir="${dir}" class="${cls}">${formatRichInlineHtml(line, siteData)}</span>`;
+        const meta = parseRichBlockMeta(line);
+        const dir = detectTextDirection(meta.inner);
+        const cls = buildRichBlockClasses(meta, dir, false, false);
+        const inlineHtml = formatRichInlineHtml(meta.inner, siteData);
+        if (meta.isQuote) {
+          return `<blockquote dir="${dir}" class="${cls}">${inlineHtml}</blockquote>`;
+        }
+        return `<span dir="${dir}" class="block ${cls}">${inlineHtml}</span>`;
       })
       .join("");
   }
@@ -1981,16 +2074,57 @@
     modalEls.articleTitle.innerHTML = formatRichInlineHtml(item.judul, src);
 
     const paragraphs = Array.isArray(item.isi) ? item.isi : [item.ringkasan];
+    const dropCapEnabled = item.dropCap !== false;
     modalEls.articleBody.innerHTML = paragraphs
       .map((p, idx) => {
-        const pDir = detectTextDirection(p);
-        const cls =
-          pDir === "rtl"
-            ? "text-right leading-[2.15]"
-            : idx === 0
-            ? "prose-dropcap"
-            : "";
-        return `<p dir="${pDir}" class="${cls}">${formatRichLinesHtml(p, src)}</p>`;
+        const rawLines = distributeMultilineRichTags(p)
+          .split(/\r?\n+/)
+          .filter((l) => l !== "");
+        const parsedLines = (rawLines.length ? rawLines : [p]).map((l) => parseRichBlockMeta(l));
+        const firstMeta = parsedLines[0] || { isQuote: false, align: "", indent: 0, inner: "" };
+        const allSameBlock = parsedLines.every(
+          (pl) =>
+            pl.isQuote === firstMeta.isQuote &&
+            pl.align === firstMeta.align &&
+            pl.indent === firstMeta.indent
+        );
+
+        if (allSameBlock) {
+          const combinedInner = parsedLines.map((pl) => pl.inner).join("\n");
+          const pDir = detectTextDirection(combinedInner);
+          const cls = buildRichBlockClasses(firstMeta, pDir, idx === 0, dropCapEnabled);
+          const renderedInner =
+            parsedLines.length > 1
+              ? parsedLines
+                  .map((pl) => {
+                    const lineDir = detectTextDirection(pl.inner);
+                    return `<span dir="${lineDir}" class="block">${formatRichInlineHtml(pl.inner, src)}</span>`;
+                  })
+                  .join("")
+              : formatRichInlineHtml(firstMeta.inner, src);
+
+          if (firstMeta.isQuote) {
+            return `<blockquote dir="${pDir}" class="${cls}">${renderedInner}</blockquote>`;
+          }
+          return `<p dir="${pDir}" class="${cls}">${renderedInner}</p>`;
+        }
+
+        return parsedLines
+          .map((pl, lineIdx) => {
+            const lineDir = detectTextDirection(pl.inner);
+            const cls = buildRichBlockClasses(
+              pl,
+              lineDir,
+              idx === 0 && lineIdx === 0,
+              dropCapEnabled
+            );
+            const inlineHtml = formatRichInlineHtml(pl.inner, src);
+            if (pl.isQuote) {
+              return `<blockquote dir="${lineDir}" class="${cls}">${inlineHtml}</blockquote>`;
+            }
+            return `<p dir="${lineDir}" class="${cls}">${inlineHtml}</p>`;
+          })
+          .join("");
       })
       .join("");
 
@@ -2460,6 +2594,8 @@
     escapeHtml,
     sanitizeRichLinkUrl,
     stripRichTags,
+    parseRichBlockMeta,
+    buildRichBlockClasses,
     resolveR2FontUrl,
     getFontCollection,
     getItemCategory,
