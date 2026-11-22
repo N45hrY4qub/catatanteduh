@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 19.13.00.
+ * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 19.39.52.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -150,7 +150,7 @@ window.SITE_DATA = {
     "kicker": "Ruang Berbagi Ilmu",
     "judulUtama": "Menghimpun Cahaya Ilmu untuk Langkah yang Lebih Tenang",
     "subjudul": "— ruang berbagi ilmu & nasihat kehidupan —",
-    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini saya menghimpun ilmu yang bersumber dari para ahli ilmu (Ulama, Asatidz, Guru dan Kiyai) yang bermanhaj [i]Salafus Shalih[/i] dalam bentuk catatan, ebook, pengingat visual, audio, serta video  yang dapat diakses siapa saja secara bebas.",
+    "deskripsi": "Sebuah ruang singgah yang tenang untuk merawat pikiran dan hati. Di sini kami berusaha menghimpun ilmu yang bersumber dari para ahli ilmu (Ulama, Asatidz, Guru dan Kiyai) dalam bentuk catatan, ebook, pengingat visual, audio, serta video  yang dapat diakses siapa saja secara bebas.",
     "namaPemilik": "Ibnu Ya'qub Ndalu",
     "emailAdmin": "benyaqub@gmail.com",
     "tahunHakCipta": "2026"
