@@ -30,7 +30,7 @@
     editingItemId: null, // "new" | item.id | null
     previewDevice: "desktop",
     previewMode: "draft", // "draft" | "public"
-    previewActiveTab: "tulisan",
+    previewActiveTab: "beranda",
     previewCategory: "all",
     previewCategoryView: "grouped",
     contentCategoryFilter: "all",
@@ -537,8 +537,12 @@ window.SITE_DATA = ${serialized};
 
     if (isPreview) {
       hideFloatingFontBar();
-      if (studio.studioTab === "konten" && studio.contentType) {
+      if (studio.studioTab === "beranda" || studio.studioTab === "tampilan") {
+        studio.previewActiveTab = "beranda";
+      } else if (studio.studioTab === "konten" && studio.contentType) {
         studio.previewActiveTab = studio.contentType;
+      } else if (studio.studioTab === "diskusi") {
+        studio.previewActiveTab = "diskusi";
       }
       applyPreviewDeviceSize();
       renderLivePreview();
@@ -2562,7 +2566,7 @@ window.SITE_DATA = ${serialized};
     // Terapkan draft yang tersimpan jika ada agar pengguna bisa langsung lihat hasil di situs utama
     App.renderSiteInto(document, studio.draftData || window.SITE_DATA, {
       includeDrafts: false,
-      activeTab: "tulisan",
+      activeTab: "beranda",
       searchQuery: "",
       isPreview: false,
     });
@@ -2831,7 +2835,15 @@ window.SITE_DATA = ${serialized};
       btn.addEventListener("click", () => {
         studio.studioTab = btn.dataset.studioTab;
         studio.editingItemId = null;
+        if (studio.studioTab === "beranda" || studio.studioTab === "tampilan") {
+          studio.previewActiveTab = "beranda";
+        } else if (studio.studioTab === "konten" && studio.contentType) {
+          studio.previewActiveTab = studio.contentType;
+        } else if (studio.studioTab === "diskusi") {
+          studio.previewActiveTab = "diskusi";
+        }
         renderStudioSidebar();
+        renderLivePreview();
       });
     });
 
@@ -6430,7 +6442,7 @@ window.SITE_DATA = ${serialized};
     // Tampilkan hasil draft lokal saat pemilik kembali ke situs
     App.renderSiteInto(document, studio.draftData, {
       includeDrafts: false,
-      activeTab: "tulisan",
+      activeTab: "beranda",
       searchQuery: "",
       isPreview: false,
     });

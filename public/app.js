@@ -177,7 +177,7 @@
   };
 
   const state = {
-    activeTab: "tulisan",
+    activeTab: "beranda",
     activeCategory: "all",
     categoryViewMode: "grouped", // "grouped" | "grid"
     searchQuery: "",
@@ -1661,7 +1661,12 @@
     const p = siteData.profil || {};
     const t = siteData.tampilan || {};
     const enabledTabs = getActiveTabsList(siteData);
-    const resolvedTab = enabledTabs.includes(activeTab) ? activeTab : enabledTabs[0] || "tulisan";
+    const resolvedTab =
+      activeTab === "beranda"
+        ? "beranda"
+        : enabledTabs.includes(activeTab)
+        ? activeTab
+        : "beranda";
     if (!isPreview) state.activeTab = resolvedTab;
 
     // 1. Jika rendering untuk kanvas Live Preview terisolasi, bangun kerangka penuh
@@ -1682,7 +1687,7 @@
         .map(
           (k) => `
           <button type="button" data-preview-tab="${k}" class="py-1.5 border-b-2 ${
-            resolvedTab === k ? "theme-text-accent border-current" : "border-transparent text-gray-600"
+            resolvedTab === k ? "theme-text-accent border-current" : "border-transparent text-gray-600 hover:text-[#1F2937]"
           } transition-colors whitespace-nowrap shrink-0">
             ${escapeHtml(TAB_META[k].navLabel)}
           </button>
@@ -1690,101 +1695,127 @@
         )
         .join("");
 
-      const tabPanelHtml = buildTabPanelHtml(siteData, resolvedTab, searchQuery, includeDrafts, true, viewOpts);
-      const activeMeta = TAB_META[resolvedTab] || { label: "Konten", hasCount: false };
+      const isBerandaPreview = resolvedTab === "beranda";
+      const hasPreviewSearch = Boolean(searchQuery.trim());
+      const tabPanelHtml = !isBerandaPreview
+        ? buildTabPanelHtml(siteData, resolvedTab, searchQuery, includeDrafts, true, viewOpts)
+        : hasPreviewSearch
+        ? buildBerandaSearchHtml(siteData, searchQuery, includeDrafts, true)
+        : "";
+      const activeMeta = isBerandaPreview
+        ? { label: "Hasil Pencarian", hasCount: false }
+        : TAB_META[resolvedTab] || { label: "Konten", hasCount: false };
 
       containerEl.innerHTML = `
         <div class="min-h-full flex flex-col bg-[#FAF9F6] text-[#1F2937]">
           <header class="border-b border-stone-200/75 bg-[#FAF9F6]/90">
             <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
-              <span class="font-theme-display text-xl font-medium tracking-tight text-[#1F2937] whitespace-nowrap shrink-0">
+              <button type="button" data-preview-tab="beranda" class="font-theme-display text-xl font-medium tracking-tight ${
+                isBerandaPreview ? "theme-text-accent" : "text-[#1F2937] hover:opacity-80"
+              } transition-colors whitespace-nowrap shrink-0">
                 ${escapeHtml(p.namaWebsite || "Catatan Teduh")}
-              </span>
+              </button>
               <nav class="hidden md:flex items-center gap-6 text-sm font-medium">${navHtml}</nav>
               ${
                 enabledTabs.includes("diskusi")
-                  ? `<button type="button" data-preview-tab="diskusi" class="px-4 py-2 text-sm font-medium text-white theme-bg-accent rounded-xl whitespace-nowrap shrink-0">Ruang Diskusi</button>`
+                  ? `<button type="button" data-preview-tab="diskusi" class="px-4 py-2 text-sm font-medium text-white theme-bg-accent rounded-xl whitespace-nowrap shrink-0 ${
+                      resolvedTab === "diskusi" ? "ring-2 ring-offset-2 ring-emerald-700/40" : ""
+                    }">Ruang Diskusi</button>`
                   : `<span></span>`
               }
             </div>
           </header>
 
           <main class="flex-1">
-            <section class="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-6 sm:pt-10 sm:pb-10">
-              <div class="grid grid-cols-1 ${t.tampilkanSorotan !== false ? "lg:grid-cols-12" : ""} gap-8 items-stretch">
-                <div class="${t.tampilkanSorotan !== false ? "lg:col-span-7" : "max-w-3xl"} flex flex-col justify-between">
-                  <div>
-                    <p class="text-xs font-semibold tracking-wider theme-text-accent mb-3">${escapeHtml(p.kicker)}</p>
-                    <h1 dir="${detectTextDirection(p.judulUtama)}" class="font-theme-display text-3xl sm:text-4xl font-medium leading-[1.15] tracking-tight text-[#1F2937] headline-balance mb-2 ${
-                      detectTextDirection(p.judulUtama) === "rtl" ? "text-right" : ""
-                    }">
-                      ${formatRichInlineHtml(p.judulUtama, siteData)}
-                    </h1>
-                    ${
-                      p.subjudul
-                        ? `<p dir="${detectTextDirection(p.subjudul)}" class="font-theme-display italic text-base sm:text-lg theme-text-accent mb-4 ${
-                            detectTextDirection(p.subjudul) === "rtl" ? "text-right" : ""
-                          }">${formatRichInlineHtml(p.subjudul, siteData)}</p>`
-                        : ""
-                    }
-                    <p dir="${detectTextDirection(p.deskripsi)}" class="text-base leading-relaxed text-gray-600 max-w-2xl mb-6 ${
-                      detectTextDirection(p.deskripsi) === "rtl" ? "text-right" : ""
-                    }">${formatRichLinesHtml(p.deskripsi, siteData)}</p>
-                    ${
-                      t.tampilkanPencarian !== false
-                        ? `<div class="max-w-xl"><div class="h-11 px-4 bg-white border border-stone-200 rounded-2xl flex items-center text-sm text-gray-400">Cari tulisan, ebook, flyer, audio, atau video...</div></div>`
-                        : ""
-                    }
-                  </div>
-                </div>
-
-                ${
-                  t.tampilkanSorotan !== false && featuredArticle
-                    ? `
-                  <aside class="lg:col-span-5 flex">
-                    <div class="w-full site-card rounded-2xl p-6 flex flex-col justify-between">
-                      <div>
-                        <div class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-3 pb-3 border-b border-stone-200/60">
-                          <span class="font-semibold theme-text-accent">Sorotan Pilihan</span>
-                          <span class="tabular-nums">${escapeHtml(featuredArticle.tanggal)}</span>
-                        </div>
-                        <h2 dir="${detectTextDirection(featuredArticle.judul)}" class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2 ${
-                          detectTextDirection(featuredArticle.judul) === "rtl" ? "text-right" : ""
-                        }">${formatRichInlineHtml(featuredArticle.judul, siteData)}</h2>
-                        <p dir="${detectTextDirection(featuredArticle.ringkasan)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
-                          detectTextDirection(featuredArticle.ringkasan) === "rtl" ? "text-right" : ""
-                        }">${formatRichLinesHtml(featuredArticle.ringkasan, siteData)}</p>
-                      </div>
-                      <div class="space-y-3">
-                        <div class="flex items-center justify-between gap-2">
-                          <span class="text-xs text-gray-500">Oleh ${escapeHtml(p.namaPemilik || "Penulis")}</span>
-                          <button type="button" data-read-article="${escapeHtml(featuredArticle.id)}" class="px-3.5 py-2 text-xs font-medium theme-text-accent theme-bg-soft border theme-border-soft rounded-xl">Baca Sekarang</button>
-                        </div>
-                        ${
-                          featuredEbook
-                            ? `<div class="pt-3 border-t border-stone-200/60 flex items-center justify-between gap-2 text-xs"><span class="truncate font-medium">${formatRichInlineHtml(featuredEbook.judul, siteData)}</span><button type="button" data-preview-tab="ebook" class="font-semibold theme-text-accent shrink-0">Lihat Ebook &rarr;</button></div>`
-                            : ""
-                        }
-                      </div>
+            ${
+              isBerandaPreview
+                ? `
+              <section class="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-10 sm:pt-12 sm:pb-14">
+                <div class="grid grid-cols-1 ${t.tampilkanSorotan !== false ? "lg:grid-cols-12" : ""} gap-8 items-stretch">
+                  <div class="${t.tampilkanSorotan !== false ? "lg:col-span-7" : "max-w-3xl"} flex flex-col justify-between">
+                    <div>
+                      <p class="text-xs font-semibold tracking-wider theme-text-accent mb-3">${escapeHtml(p.kicker)}</p>
+                      <h1 dir="${detectTextDirection(p.judulUtama)}" class="font-theme-display text-3xl sm:text-4xl font-medium leading-[1.15] tracking-tight text-[#1F2937] headline-balance mb-2 ${
+                        detectTextDirection(p.judulUtama) === "rtl" ? "text-right" : ""
+                      }">
+                        ${formatRichInlineHtml(p.judulUtama, siteData)}
+                      </h1>
+                      ${
+                        p.subjudul
+                          ? `<p dir="${detectTextDirection(p.subjudul)}" class="font-theme-display italic text-base sm:text-lg theme-text-accent mb-4 ${
+                              detectTextDirection(p.subjudul) === "rtl" ? "text-right" : ""
+                            }">${formatRichInlineHtml(p.subjudul, siteData)}</p>`
+                          : ""
+                      }
+                      <p dir="${detectTextDirection(p.deskripsi)}" class="text-base leading-relaxed text-gray-600 max-w-2xl mb-6 ${
+                        detectTextDirection(p.deskripsi) === "rtl" ? "text-right" : ""
+                      }">${formatRichLinesHtml(p.deskripsi, siteData)}</p>
+                      ${
+                        t.tampilkanPencarian !== false
+                          ? `<div class="max-w-xl"><div class="h-11 px-4 bg-white border border-stone-200 rounded-2xl flex items-center text-sm text-gray-400">Cari tulisan, ebook, flyer, audio, atau video...</div></div>`
+                          : ""
+                      }
                     </div>
-                  </aside>
-                `
-                    : ""
-                }
-              </div>
-            </section>
+                  </div>
 
-            <section class="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
-              <div class="flex items-baseline justify-between gap-4 pb-4 mb-7 border-b border-stone-200/80">
-                <h2 class="font-theme-display text-2xl font-medium text-[#1F2937]">${escapeHtml(activeMeta.label)}</h2>
-                ${
-                  activeMeta.hasCount
-                    ? `<span class="text-xs sm:text-sm text-gray-500 tabular-nums">${counts[resolvedTab] || 0} materi</span>`
-                    : `<span class="text-xs sm:text-sm text-gray-500">Forum Terbuka</span>`
-                }
-              </div>
-              <div>${tabPanelHtml}</div>
-            </section>
+                  ${
+                    t.tampilkanSorotan !== false && featuredArticle
+                      ? `
+                    <aside class="lg:col-span-5 flex">
+                      <div class="w-full site-card rounded-2xl p-6 flex flex-col justify-between">
+                        <div>
+                          <div class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-3 pb-3 border-b border-stone-200/60">
+                            <span class="font-semibold theme-text-accent">Sorotan Pilihan</span>
+                            <span class="tabular-nums">${escapeHtml(featuredArticle.tanggal)}</span>
+                          </div>
+                          <h2 dir="${detectTextDirection(featuredArticle.judul)}" class="font-theme-display text-xl font-medium leading-snug text-[#1F2937] mb-2 ${
+                            detectTextDirection(featuredArticle.judul) === "rtl" ? "text-right" : ""
+                          }">${formatRichInlineHtml(featuredArticle.judul, siteData)}</h2>
+                          <p dir="${detectTextDirection(featuredArticle.ringkasan)}" class="text-sm text-gray-600 leading-relaxed mb-5 ${
+                            detectTextDirection(featuredArticle.ringkasan) === "rtl" ? "text-right" : ""
+                          }">${formatRichLinesHtml(featuredArticle.ringkasan, siteData)}</p>
+                        </div>
+                        <div class="space-y-3">
+                          <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs text-gray-500">Oleh ${escapeHtml(p.namaPemilik || "Penulis")}</span>
+                            <button type="button" data-read-article="${escapeHtml(featuredArticle.id)}" class="px-3.5 py-2 text-xs font-medium theme-text-accent theme-bg-soft border theme-border-soft rounded-xl">Baca Sekarang</button>
+                          </div>
+                          ${
+                            featuredEbook
+                              ? `<div class="pt-3 border-t border-stone-200/60 flex items-center justify-between gap-2 text-xs"><span class="truncate font-medium">${formatRichInlineHtml(featuredEbook.judul, siteData)}</span><button type="button" data-preview-tab="ebook" class="font-semibold theme-text-accent shrink-0">Lihat Ebook &rarr;</button></div>`
+                              : ""
+                          }
+                        </div>
+                      </div>
+                    </aside>
+                  `
+                      : ""
+                  }
+                </div>
+              </section>
+            `
+                : ""
+            }
+
+            ${
+              !isBerandaPreview || hasPreviewSearch
+                ? `
+              <section class="max-w-6xl mx-auto px-4 sm:px-6 ${isBerandaPreview ? "" : "pt-8 sm:pt-10 "}pb-16">
+                <div class="flex items-baseline justify-between gap-4 pb-4 mb-7 border-b border-stone-200/80">
+                  <h2 class="font-theme-display text-2xl font-medium text-[#1F2937]">${escapeHtml(activeMeta.label)}</h2>
+                  ${
+                    isBerandaPreview
+                      ? `<span class="text-xs sm:text-sm text-gray-500 tabular-nums">${totalMatches} hasil</span>`
+                      : activeMeta.hasCount
+                      ? `<span class="text-xs sm:text-sm text-gray-500 tabular-nums">${counts[resolvedTab] || 0} materi</span>`
+                      : `<span class="text-xs sm:text-sm text-gray-500">Forum Terbuka</span>`
+                  }
+                </div>
+                <div>${tabPanelHtml}</div>
+              </section>
+            `
+                : ""
+            }
           </main>
 
           <footer class="border-t border-stone-200/80 bg-[#F3F1EC]/60 mt-auto">
@@ -1799,6 +1830,8 @@
 
     // 2. Rendering ke Halaman Publik Utama
     const brandEl = document.getElementById("brand-wordmark");
+    const berandaEl = document.getElementById("beranda");
+    const kontenUtamaEl = document.getElementById("konten-utama");
     const kickerEl = document.getElementById("hero-kicker");
     const titleEl = document.getElementById("hero-title");
     const subtitleEl = document.getElementById("hero-subtitle");
@@ -1818,7 +1851,18 @@
     const searchHintEl = document.getElementById("search-shortcut-hint");
     const searchStatusEl = document.getElementById("search-status");
 
-    if (brandEl) brandEl.textContent = p.namaWebsite || "Catatan Teduh";
+    const isBeranda = resolvedTab === "beranda";
+
+    if (brandEl) {
+      brandEl.textContent = p.namaWebsite || "Catatan Teduh";
+      brandEl.classList.toggle("theme-text-accent", isBeranda);
+      brandEl.classList.toggle("text-[#1F2937]", !isBeranda);
+      if (isBeranda) {
+        brandEl.setAttribute("aria-current", "page");
+      } else {
+        brandEl.removeAttribute("aria-current");
+      }
+    }
     if (kickerEl) kickerEl.textContent = p.kicker || "";
     if (titleEl) {
       const dirTitle = detectTextDirection(p.judulUtama);
@@ -1861,8 +1905,9 @@
       totalMatches += counts[k];
     });
 
+    const hasSearch = Boolean(searchQuery.trim());
     if (searchStatusEl && searchClearEl && searchHintEl) {
-      if (searchQuery.trim()) {
+      if (hasSearch) {
         searchClearEl.classList.remove("hidden");
         searchHintEl.classList.add("hidden");
         searchStatusEl.textContent = `Ditemukan ${totalMatches} konten yang cocok untuk "${searchQuery.trim()}".`;
@@ -1897,34 +1942,52 @@
 
     // Mobile drawer navigation
     if (mobileDrawerEl) {
-      mobileDrawerEl.innerHTML = enabledTabs
-        .map((k) => {
-          const meta = TAB_META[k];
-          const isActive = resolvedTab === k;
-          return `
-            <button
-              type="button"
-              data-nav-tab="${k}"
-              class="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-xl transition-colors ${
-                isActive
-                  ? "font-semibold theme-text-accent theme-bg-soft"
-                  : "font-medium text-gray-700 hover:bg-stone-200/50"
-              }"
-            >
-              <span>${escapeHtml(meta.label)}</span>
-              ${
-                meta.hasCount
-                  ? `<span class="text-xs tabular-nums opacity-75">${counts[k] || 0}</span>`
-                  : ""
-              }
-            </button>
-          `;
-        })
-        .join("");
+      const homeMobileBtn = `
+        <button
+          type="button"
+          data-nav-tab="beranda"
+          class="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-xl transition-colors ${
+            isBeranda
+              ? "font-semibold theme-text-accent theme-bg-soft"
+              : "font-medium text-gray-700 hover:bg-stone-200/50"
+          }"
+        >
+          <span>${escapeHtml(p.namaWebsite || "Catatan Teduh")} (Beranda)</span>
+        </button>
+      `;
+      mobileDrawerEl.innerHTML =
+        homeMobileBtn +
+        enabledTabs
+          .map((k) => {
+            const meta = TAB_META[k];
+            const isActive = resolvedTab === k;
+            return `
+              <button
+                type="button"
+                data-nav-tab="${k}"
+                class="w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-xl transition-colors ${
+                  isActive
+                    ? "font-semibold theme-text-accent theme-bg-soft"
+                    : "font-medium text-gray-700 hover:bg-stone-200/50"
+                }"
+              >
+                <span>${escapeHtml(meta.label)}</span>
+                ${
+                  meta.hasCount
+                    ? `<span class="text-xs tabular-nums opacity-75">${counts[k] || 0}</span>`
+                    : ""
+                }
+              </button>
+            `;
+          })
+          .join("");
     }
 
     if (ctaDiskusiEl) {
       ctaDiskusiEl.classList.toggle("hidden", !enabledTabs.includes("diskusi"));
+      ctaDiskusiEl.classList.toggle("ring-2", resolvedTab === "diskusi");
+      ctaDiskusiEl.classList.toggle("ring-offset-2", resolvedTab === "diskusi");
+      ctaDiskusiEl.classList.toggle("ring-emerald-700/40", resolvedTab === "diskusi");
     }
 
     // Hero spotlight
@@ -1981,24 +2044,92 @@
       }
     }
 
-    // Active section heading (tanpa tab duplikat)
+    // Tampilkan Beranda murni tanpa section Tulisan/Ebook di bawahnya (kecuali saat ada pencarian aktif)
+    if (berandaEl) {
+      berandaEl.classList.toggle("hidden", !isBeranda);
+    }
+
+    const showContentSection = !isBeranda || hasSearch;
+    if (kontenUtamaEl) {
+      kontenUtamaEl.classList.toggle("hidden", !showContentSection);
+      kontenUtamaEl.classList.toggle("pt-10", !isBeranda);
+      kontenUtamaEl.classList.toggle("sm:pt-12", !isBeranda);
+    }
+
+    if (!showContentSection) {
+      if (sectionHeaderEl) sectionHeaderEl.innerHTML = "";
+      if (tabContentEl) tabContentEl.innerHTML = "";
+      return;
+    }
+
+    // Active section heading
     if (sectionHeaderEl) {
-      const activeMeta = TAB_META[resolvedTab] || { label: "Konten", hasCount: false };
-      sectionHeaderEl.innerHTML = `
-        <h2 class="font-theme-display text-2xl sm:text-[1.7rem] font-medium text-[#1F2937]">${escapeHtml(activeMeta.label)}</h2>
-        <span class="text-xs sm:text-sm text-gray-500 tabular-nums">
-          ${activeMeta.hasCount ? `${counts[resolvedTab] || 0} materi` : "Forum Terbuka"}
-        </span>
-      `;
+      if (isBeranda) {
+        sectionHeaderEl.innerHTML = `
+          <div class="flex flex-wrap items-baseline gap-3">
+            <h2 class="font-theme-display text-2xl sm:text-[1.7rem] font-medium text-[#1F2937]">Hasil Pencarian</h2>
+            <button type="button" data-action="reset-search" class="text-xs font-medium theme-text-accent hover:underline">Hapus kata kunci</button>
+          </div>
+          <span class="text-xs sm:text-sm text-gray-500 tabular-nums">${totalMatches} materi cocok</span>
+        `;
+      } else {
+        const activeMeta = TAB_META[resolvedTab] || { label: "Konten", hasCount: false };
+        sectionHeaderEl.innerHTML = `
+          <div class="flex flex-wrap items-baseline gap-3">
+            <h2 class="font-theme-display text-2xl sm:text-[1.7rem] font-medium text-[#1F2937]">${escapeHtml(activeMeta.label)}</h2>
+            ${
+              hasSearch
+                ? `<button type="button" data-action="reset-search" class="text-xs font-medium theme-text-accent hover:underline">Filter: "${escapeHtml(searchQuery.trim())}" · Reset</button>`
+                : ""
+            }
+          </div>
+          <span class="text-xs sm:text-sm text-gray-500 tabular-nums">
+            ${activeMeta.hasCount ? `${counts[resolvedTab] || 0} materi` : "Forum Terbuka"}
+          </span>
+        `;
+      }
     }
 
     // Tab panel
     if (tabContentEl) {
-      tabContentEl.innerHTML = buildTabPanelHtml(siteData, resolvedTab, searchQuery, false, false, viewOpts);
-      if (resolvedTab === "diskusi") {
-        mountGiscusInto(tabContentEl, siteData);
+      if (isBeranda) {
+        tabContentEl.innerHTML = buildBerandaSearchHtml(siteData, searchQuery, false, false);
+      } else {
+        tabContentEl.innerHTML = buildTabPanelHtml(siteData, resolvedTab, searchQuery, false, false, viewOpts);
+        if (resolvedTab === "diskusi") {
+          mountGiscusInto(tabContentEl, siteData);
+        }
       }
     }
+  }
+
+  function buildBerandaSearchHtml(siteData, searchQuery, includeDrafts, isPreview) {
+    const enabledMedia = getActiveTabsList(siteData).filter((k) => MEDIA_TAB_KEYS.includes(k));
+    const sections = enabledMedia
+      .map((k) => {
+        const matches = filterItems(siteData, k, searchQuery, includeDrafts);
+        if (!matches.length) return "";
+        const navAttr = isPreview ? `data-preview-tab="${k}"` : `data-jump-tab="${k}"`;
+        return `
+          <section class="space-y-4">
+            <div class="flex items-center justify-between gap-3 pb-2 border-b border-stone-200/70">
+              <h3 class="font-theme-display text-lg font-medium text-[#1F2937]">
+                ${escapeHtml(TAB_META[k].label)} <span class="text-xs font-sans text-gray-500 tabular-nums">(${matches.length})</span>
+              </h3>
+              <button type="button" ${navAttr} class="text-xs font-semibold theme-text-accent hover:underline shrink-0">
+                Buka ${escapeHtml(TAB_META[k].navLabel)} &rarr;
+              </button>
+            </div>
+            ${buildTabPanelHtml(siteData, k, searchQuery, includeDrafts, isPreview, { activeCategory: "all", categoryViewMode: "grid" })}
+          </section>
+        `;
+      })
+      .filter(Boolean);
+
+    if (!sections.length) {
+      return buildEmptyHtml("konten", searchQuery);
+    }
+    return `<div class="space-y-12 panel-enter">${sections.join("")}</div>`;
   }
 
   function buildTabPanelHtml(siteData, tabKey, searchQuery, includeDrafts, isPreview, options) {
@@ -2349,13 +2480,12 @@
   }
 
   function switchPublicTab(tabKey, shouldScroll, nextCategory) {
-    state.activeTab = tabKey;
+    state.activeTab = tabKey || "beranda";
     state.activeCategory = nextCategory !== undefined ? nextCategory : "all";
     closeMobileDrawer();
     renderPublicCurrentState();
     if (shouldScroll) {
-      const target = document.getElementById("konten-utama");
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -2392,6 +2522,11 @@
     const publicWrapper = document.getElementById("public-site-wrapper");
     if (publicWrapper) {
       publicWrapper.addEventListener("click", (e) => {
+        if (e.target.closest("#brand-wordmark")) {
+          e.preventDefault();
+          switchPublicTab("beranda", true);
+          return;
+        }
         const filterCatBtn = e.target.closest("[data-filter-category]");
         if (filterCatBtn) {
           state.activeCategory = filterCatBtn.dataset.filterCategory || "all";
@@ -2623,6 +2758,9 @@
         !["INPUT", "TEXTAREA", "SELECT"].includes((document.activeElement || {}).tagName)
       ) {
         e.preventDefault();
+        if (state.activeTab !== "beranda") {
+          switchPublicTab("beranda", true);
+        }
         searchInput.focus();
       }
     });
