@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 22/11/2026, 22.46.32.
+ * Diperbarui melalui Studio Visual Editor pada 23/11/2026, 20.34.19.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -146,6 +146,10 @@ window.SITE_DATA = {
       {
         "nama": "Refleksi",
         "deskripsi": "Pengingat diri"
+      },
+      {
+        "nama": "Thalabul Ilmi",
+        "deskripsi": "Panduan menuntut ilmu dan informasi serta menyebarkannya"
       }
     ]
   },
