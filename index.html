@@ -754,11 +754,12 @@
           <!-- Bilah Rich Text Editor Melayang Kontekstual (muncul di atas kotak teks yang sedang diedit) -->
           <div
             id="studio-floating-font-bar"
-            class="hidden fixed z-50 flex-col items-stretch bg-white border border-stone-300 rounded-xl shadow-lg overflow-hidden text-xs max-w-[calc(100vw-24px)]"
+            class="hidden fixed z-50 flex-col items-stretch bg-white border border-stone-300 rounded-xl shadow-lg overflow-hidden text-xs max-w-[calc(100vw-24px)] sm:max-w-[calc(100vw-32px)]"
             role="toolbar"
             aria-label="Pengaturan rich text editor"
           >
-            <div class="flex flex-wrap items-center">
+            <div class="flex flex-wrap items-center sm:flex-col sm:items-stretch">
+              <div class="contents sm:flex sm:flex-nowrap sm:items-center sm:border-b sm:border-stone-200/80 sm:bg-white">
               <!-- 1. Undo / Redo -->
               <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
                 <button
@@ -788,11 +789,11 @@
               </div>
 
               <!-- 2. Font & Ukuran -->
-              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
+              <div class="inline-flex items-center shrink-0 sm:shrink sm:flex-1 sm:min-w-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
                 <select
                   id="studio-text-font-select"
                   aria-label="Pilih jenis font"
-                  class="h-8 pl-2.5 pr-6 text-xs font-medium text-gray-800 bg-white border-r border-stone-200 focus:outline-none focus:bg-emerald-50/40 max-w-[155px] sm:max-w-[175px] truncate"
+                  class="h-8 pl-2.5 pr-6 text-xs font-medium text-gray-800 bg-white border-r border-stone-200 focus:outline-none focus:bg-emerald-50/40 max-w-[155px] sm:max-w-none sm:flex-1 sm:min-w-[150px] truncate"
                 ></select>
                 <div class="relative flex items-center bg-white">
                   <input
@@ -894,7 +895,7 @@
               </div>
 
               <!-- 4. Perataan Teks -->
-              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
+              <div class="inline-flex items-center shrink-0 border-r border-stone-200 sm:border-r-0 border-b border-stone-100 sm:border-b-0 bg-white">
                 <button
                   type="button"
                   id="btn-align-left"
@@ -948,9 +949,11 @@
                   </svg>
                 </button>
               </div>
+              </div>
 
+              <div class="contents sm:flex sm:flex-nowrap sm:items-center sm:bg-stone-50/40">
               <!-- 5. Bullet & Numbering -->
-              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
+              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white sm:bg-transparent">
                 <button
                   type="button"
                   id="btn-format-ul"
@@ -982,7 +985,7 @@
               </div>
 
               <!-- 6. Blockquote, Subjudul Bab, Pemisah Halaman & Indentasi Fleksibel (0.5 - 4 tingkat + Mode Baris) -->
-              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white">
+              <div class="inline-flex items-center shrink-0 border-r border-stone-200 border-b border-stone-100 sm:border-b-0 bg-white sm:bg-transparent">
                 <button
                   type="button"
                   id="btn-format-h2"
@@ -1021,7 +1024,7 @@
                   id="studio-indent-mode-select"
                   aria-label="Mode indentasi paragraf"
                   title="Pilih bagian yang digeser: Semua baris, Baris pertama saja, atau Baris ke-2 dst (Gantung)"
-                  class="h-8 pl-1.5 pr-4 text-[11px] font-medium text-gray-700 bg-white border-r border-stone-100 focus:outline-none focus:bg-emerald-50/40"
+                  class="h-8 pl-1.5 pr-4 text-[11px] font-medium text-gray-700 bg-white sm:bg-transparent border-r border-stone-100 focus:outline-none focus:bg-emerald-50/40"
                 >
                   <option value="all">Semua</option>
                   <option value="first">Baris 1</option>
@@ -1038,7 +1041,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 6h9M11 10h9M11 14h9M4 18h16M7 8l-4 4 4 4" />
                   </svg>
                 </button>
-                <div class="relative flex items-center bg-white border-r border-stone-100" title="Tingkat indentasi (0 – 4, bisa 0.5, 1, 1.5, dst)">
+                <div class="relative flex items-center bg-white sm:bg-transparent border-r border-stone-100" title="Tingkat indentasi (0 – 4, bisa 0.5, 1, 1.5, dst)">
                   <input
                     type="text"
                     id="studio-indent-input"
@@ -1081,7 +1084,7 @@
               </div>
 
               <!-- 7. Toggle Drop Cap (+ Arab & Reset) -->
-              <div class="inline-flex items-center shrink-0 bg-white">
+              <div class="inline-flex items-center shrink-0 sm:ml-auto sm:border-l sm:border-stone-200 bg-white sm:bg-transparent">
                 <button
                   type="button"
                   id="btn-toggle-dropcap"
@@ -1109,6 +1112,7 @@
                 >
                   Reset
                 </button>
+              </div>
               </div>
             </div>
 

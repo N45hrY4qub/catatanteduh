@@ -679,13 +679,32 @@ window.SITE_DATA = ${serialized};
 
     const barWidth = bar.offsetWidth || 340;
     const barHeight = bar.offsetHeight || 34;
+    const isDesktop = window.innerWidth >= 640;
 
-    let top = rect.top - barHeight - 6;
-    if (top < Math.max(60, scrollRect.top + 4)) {
-      top = Math.min(rect.bottom + 6, window.innerHeight - barHeight - 8);
+    let top = rect.top - barHeight - 8;
+    const minSafeTop =
+      isDesktop && targetEl.dataset.multiline !== "true"
+        ? scrollRect.top + 56
+        : Math.max(60, scrollRect.top + 4);
+    if (top < minSafeTop) {
+      top = Math.min(rect.bottom + 8, window.innerHeight - barHeight - 8);
     }
 
-    const left = Math.max(12, Math.min(rect.right - barWidth, window.innerWidth - barWidth - 12));
+    let left;
+    if (isDesktop) {
+      const panelRect = els.studioPanelBody
+        ? els.studioPanelBody.getBoundingClientRect()
+        : null;
+      const minLeft = panelRect && panelRect.width >= barWidth + 16 ? Math.max(12, panelRect.left + 8) : 12;
+      const maxRightBound =
+        panelRect && panelRect.width >= barWidth + 16
+          ? Math.min(window.innerWidth - 12, panelRect.right - 8)
+          : window.innerWidth - 12;
+      const maxLeft = Math.max(minLeft, maxRightBound - barWidth);
+      left = Math.max(minLeft, Math.min(rect.left, maxLeft));
+    } else {
+      left = Math.max(12, Math.min(rect.right - barWidth, window.innerWidth - barWidth - 12));
+    }
     bar.style.top = `${Math.round(top)}px`;
     bar.style.left = `${Math.round(left)}px`;
   }
