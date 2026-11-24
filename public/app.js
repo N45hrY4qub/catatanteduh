@@ -182,6 +182,14 @@
     categoryViewMode: "grouped", // "grouped" | "grid"
     searchQuery: "",
     fontSize: localStorage.getItem("catatan_teduh_font_size") || "md",
+    readerMode: localStorage.getItem("catatan_teduh_reader_mode") === "book" ? "book" : "scroll",
+    bookSpread: localStorage.getItem("catatan_teduh_book_spread") === "2" ? 2 : 1,
+    bookPages: [],
+    bookToc: [],
+    bookCurrentPage: 0,
+    bookTurnDir: "",
+    articleBlocks: [],
+    tocOpen: false,
     giscusLoaded: false,
     activeFlyer: null,
     activeArticle: null,
@@ -370,23 +378,38 @@
 
   function stripRichTags(str) {
     return String(str || "")
+      .replace(/\[page\]/gi, "")
       .replace(/\[(?:font|arab)(?:=[a-z0-9-]+)?(?:\s+size=\d{1,3})?\]/gi, "")
       .replace(/\[\/(?:font|arab)\]/gi, "")
-      .replace(/\[(?:b|i|u|s|quote|ul|ol)\]/gi, "")
-      .replace(/\[\/(?:b|i|u|s|quote|ul|ol)\]/gi, "")
+      .replace(/\[(?:b|i|u|s|h2|quote|ul|ol)\]/gi, "")
+      .replace(/\[\/(?:b|i|u|s|h2|quote|ul|ol)\]/gi, "")
       .replace(/\[color=[^\]]+\]/gi, "")
       .replace(/\[\/color\]/gi, "")
       .replace(/\[align=(?:left|center|right|justify)\]/gi, "")
       .replace(/\[\/align\]/gi, "")
       .replace(/\[indent=[0-4](?:\.\d+)?(?:\s+mode=(?:all|first|hanging))?\]/gi, "")
       .replace(/\[\/indent\]/gi, "")
-      .replace(/<\/?blockquote[^>]*>/gi, "")
+      .replace(/<\/?(?:blockquote|h2)[^>]*>/gi, "")
       .replace(/\[url=[^\]]+\]/gi, "")
       .replace(/\[\/url\]/gi, "");
   }
 
   function parseRichBlockMeta(rawBlock) {
     let text = String(rawBlock || "").trim();
+    if (/^\[page\]$/i.test(text)) {
+      return {
+        isPageBreak: true,
+        isHeading: false,
+        isQuote: false,
+        listType: "",
+        align: "",
+        indent: 0,
+        indentMode: "all",
+        inner: "",
+      };
+    }
+
+    let isHeading = false;
     let isQuote = false;
     let listType = "";
     let align = "";
@@ -401,12 +424,22 @@
         if (!listType) listType = m[1].toLowerCase();
         text = m[2].trim();
         changed = true;
+      } else if ((m = text.match(/^\[h2\]([\s\S]*)\[\/h2\]$/i))) {
+        isHeading = true;
+        isQuote = false;
+        text = m[1].trim();
+        changed = true;
+      } else if ((m = text.match(/^<h2[^>]*>([\s\S]*)<\/h2>$/i))) {
+        isHeading = true;
+        isQuote = false;
+        text = m[1].trim();
+        changed = true;
       } else if ((m = text.match(/^\[quote\]([\s\S]*)\[\/quote\]$/i))) {
-        isQuote = true;
+        if (!isHeading) isQuote = true;
         text = m[1].trim();
         changed = true;
       } else if ((m = text.match(/^<blockquote[^>]*>([\s\S]*)<\/blockquote>$/i))) {
-        isQuote = true;
+        if (!isHeading) isQuote = true;
         text = m[1].trim();
         changed = true;
       } else if ((m = text.match(/^\[align=(left|center|right|justify)\]([\s\S]*)\[\/align\]$/i))) {
@@ -424,7 +457,9 @@
     }
 
     return {
-      isQuote,
+      isPageBreak: false,
+      isHeading,
+      isQuote: !isHeading && !listType && isQuote,
       listType,
       align,
       indent,
@@ -443,7 +478,9 @@
   function buildRichBlockClasses(meta, dir, isFirstNormalCandidate, dropCapEnabled) {
     const classes = [];
     const m = meta || {};
-    if (m.isQuote && !m.listType) {
+    if (m.isHeading && !m.listType) {
+      classes.push("ct-subheading");
+    } else if (m.isQuote && !m.listType) {
       classes.push("ct-blockquote");
     }
     if (m.align && ["left", "center", "right", "justify"].includes(m.align)) {
@@ -468,6 +505,8 @@
     const allowDropCap =
       Boolean(dropCapEnabled) &&
       Boolean(isFirstNormalCandidate) &&
+      !m.isPageBreak &&
+      !m.isHeading &&
       !m.isQuote &&
       !m.listType &&
       dir !== "rtl" &&
@@ -516,8 +555,13 @@
     const rawStr = String(rawText || "");
     if (!rawStr) return "";
     const outerMeta = parseRichBlockMeta(rawStr);
+    if (outerMeta.isPageBreak) return "";
     const hasOuterBlock =
-      outerMeta.isQuote || Boolean(outerMeta.listType) || Boolean(outerMeta.align) || outerMeta.indent > 0;
+      outerMeta.isHeading ||
+      outerMeta.isQuote ||
+      Boolean(outerMeta.listType) ||
+      Boolean(outerMeta.align) ||
+      outerMeta.indent > 0;
     const input = hasOuterBlock ? outerMeta.inner : rawStr;
     if (!input && !hasOuterBlock) return "";
 
@@ -623,6 +667,9 @@
         const listTag = outerMeta.listType;
         return `<${listTag} dir="${dir}" class="ct-list ct-list-${listTag}"><li dir="${dir}"${cls ? ` class="${cls}"` : ""}${styleAttr}>${result}</li></${listTag}>`;
       }
+      if (outerMeta.isHeading) {
+        return `<h2 dir="${dir}" class="${cls}"${styleAttr}>${result}</h2>`;
+      }
       const wrapTag = outerMeta.isQuote ? "blockquote" : "span";
       const extraBlockCls = outerMeta.isQuote ? "" : "block ";
       return `<${wrapTag} dir="${dir}" class="${extraBlockCls}${cls}"${styleAttr}>${result}</${wrapTag}>`;
@@ -635,7 +682,7 @@
     let out = String(rawText || "");
     for (let pass = 0; pass < 3; pass += 1) {
       const next = out.replace(
-        /\[(ul|ol|quote|align|indent|font|arab|color|b|i|u|s|url)((?:=[^\]]+)?(?:\s+(?:size=\d{1,3}|mode=(?:all|first|hanging)))?)\]([\s\S]*?)\[\/\1\]/gi,
+        /\[(ul|ol|h2|quote|align|indent|font|arab|color|b|i|u|s|url)((?:=[^\]]+)?(?:\s+(?:size=\d{1,3}|mode=(?:all|first|hanging)))?)\]([\s\S]*?)\[\/\1\]/gi,
         (_full, tag, attrs, inner) => {
           if (!/[\r\n]/.test(inner)) return `[${tag}${attrs}]${inner}[/${tag}]`;
           return inner
@@ -661,11 +708,20 @@
     let i = 0;
     while (i < parsedLines.length) {
       const item = parsedLines[i];
+      if (item.isPageBreak) {
+        olRunIndex = 0;
+        if (isArticle) {
+          htmlParts.push('<div class="ct-scroll-page-divider" aria-hidden="true"><span>Halaman Berikutnya</span></div>');
+        }
+        i += 1;
+        continue;
+      }
+
       if (item.listType === "ul" || item.listType === "ol") {
         const listTag = item.listType;
         const listItems = [];
         const startNum = listTag === "ol" ? olRunIndex + 1 : 0;
-        while (i < parsedLines.length && parsedLines[i].listType === listTag) {
+        while (i < parsedLines.length && !parsedLines[i].isPageBreak && parsedLines[i].listType === listTag) {
           const liMeta = parsedLines[i];
           const liDir = detectTextDirection(liMeta.inner);
           const liCls = buildRichBlockClasses(liMeta, liDir, false, false);
@@ -697,7 +753,9 @@
       const styleStr = buildRichBlockStyle(item);
       const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
       const inlineHtml = formatRichInlineHtml(item.inner, siteData);
-      if (item.isQuote) {
+      if (item.isHeading) {
+        htmlParts.push(`<h2 dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</h2>`);
+      } else if (item.isQuote) {
         htmlParts.push(`<blockquote dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</blockquote>`);
       } else if (isArticle) {
         htmlParts.push(`<p dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</p>`);
@@ -2173,6 +2231,25 @@
     articleCopy: document.getElementById("modal-copy-link"),
     articleCopyLabel: document.getElementById("modal-copy-label"),
     fontButtons: Array.from(document.querySelectorAll(".font-size-btn")),
+    readerModeButtons: Array.from(document.querySelectorAll(".reader-mode-btn")),
+    spreadToggleWrap: document.getElementById("modal-spread-toggle-wrap"),
+    bookSpreadButtons: Array.from(document.querySelectorAll(".book-spread-btn")),
+    tocToggleBtn: document.getElementById("modal-toc-toggle"),
+    tocCountBadge: document.getElementById("modal-toc-count"),
+    tocDrawer: document.getElementById("modal-toc-drawer"),
+    tocBackdrop: document.getElementById("modal-toc-backdrop"),
+    tocCloseBtn: document.getElementById("modal-toc-close"),
+    tocSubtitle: document.getElementById("modal-toc-subtitle"),
+    tocList: document.getElementById("modal-toc-list"),
+    savePdfBtn: document.getElementById("modal-save-pdf"),
+    pdfPrintSheet: document.getElementById("ct-pdf-print-sheet"),
+    bookStage: document.getElementById("modal-book-stage"),
+    bookPagesHost: document.getElementById("modal-book-pages-host"),
+    bookPrevBtn: document.getElementById("modal-book-prev"),
+    bookNextBtn: document.getElementById("modal-book-next"),
+    bookEdgePrev: document.getElementById("modal-book-edge-prev"),
+    bookEdgeNext: document.getElementById("modal-book-edge-next"),
+    bookPageLabel: document.getElementById("modal-book-page-label"),
     lightboxModal: document.getElementById("lightbox-modal"),
     lightboxImg: document.getElementById("lightbox-img"),
     lightboxTitle: document.getElementById("lightbox-title"),
@@ -2182,17 +2259,19 @@
     lightboxDownload: document.getElementById("lightbox-download"),
   };
 
-  function applyArticleFontSize(sizeKey) {
-    state.fontSize = sizeKey;
-    localStorage.setItem("catatan_teduh_font_size", sizeKey);
+  function getArticleProseSizeClasses(sizeKey) {
     const sizeClasses = {
       sm: "text-[15px] leading-[1.75]",
       md: "text-[17px] leading-[1.82]",
       lg: "text-[20px] leading-[1.85]",
     };
-    modalEls.articleBody.className = `font-prose text-[#1F2937] space-y-5 ${
-      sizeClasses[sizeKey] || sizeClasses.md
-    }`;
+    return sizeClasses[sizeKey] || sizeClasses.md;
+  }
+
+  function applyArticleFontSize(sizeKey) {
+    state.fontSize = sizeKey;
+    localStorage.setItem("catatan_teduh_font_size", sizeKey);
+    modalEls.articleBody.className = `font-prose text-[#1F2937] space-y-5 ${getArticleProseSizeClasses(sizeKey)}`;
 
     modalEls.fontButtons.forEach((btn) => {
       const active = btn.dataset.fontSize === sizeKey;
@@ -2200,10 +2279,33 @@
       btn.classList.toggle("text-white", active);
       btn.classList.toggle("text-gray-600", !active);
     });
+
+    if (
+      state.activeArticle &&
+      modalEls.articleModal &&
+      !modalEls.articleModal.classList.contains("hidden") &&
+      state.readerMode === "book"
+    ) {
+      repaginateAndRenderBook(true);
+    }
+  }
+
+  function getEffectiveBookSpread() {
+    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
+    return state.bookSpread === 2 && vw >= 768 ? 2 : 1;
   }
 
   function updateReadingProgress() {
-    if (!modalEls.articleScroll || !modalEls.articleProgress) return;
+    if (!modalEls.articleProgress) return;
+    if (state.readerMode === "book") {
+      const total = Math.max(1, state.bookPages.length);
+      const spread = getEffectiveBookSpread();
+      const visibleEnd = Math.min(total, state.bookCurrentPage + spread);
+      const pct = Math.min(100, Math.round((visibleEnd / total) * 100));
+      modalEls.articleProgress.style.width = `${pct}%`;
+      return;
+    }
+    if (!modalEls.articleScroll) return;
     const { scrollTop, scrollHeight, clientHeight } = modalEls.articleScroll;
     const max = scrollHeight - clientHeight;
     const pct = max > 0 ? Math.min(100, Math.round((scrollTop / max) * 100)) : 100;
@@ -2319,8 +2421,863 @@
     return resolved;
   }
 
+  function applyPanelSizeForCurrentMode() {
+    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
+    const savedSize = vw >= 640 ? getSavedArticleModalSize() : null;
+    if (state.readerMode === "book") {
+      const { maxWidth, maxHeight, vh } = getArticleModalBounds();
+      const spread = getEffectiveBookSpread();
+      if (spread === 2) {
+        const targetW = savedSize && savedSize.width >= 880 ? savedSize.width : Math.min(1120, maxWidth);
+        const targetH = savedSize && savedSize.height ? Math.max(savedSize.height, Math.round(vh * 0.86)) : Math.min(Math.round(vh * 0.9), maxHeight);
+        applyArticleModalSize(targetW, targetH, false);
+        return;
+      }
+      // Mode buku 1 halaman membutuhkan tinggi tetap agar lembar halaman tampil proporsional
+      const targetW = savedSize ? savedSize.width : Math.min(760, maxWidth);
+      const targetH = savedSize && savedSize.height ? savedSize.height : Math.min(Math.round(vh * 0.88), maxHeight);
+      applyArticleModalSize(targetW, targetH, false);
+      return;
+    }
+
+    if (savedSize) {
+      applyArticleModalSize(savedSize.width, savedSize.height, false);
+    } else {
+      applyArticleModalSize(null, null, false);
+    }
+  }
+
   function resetArticleModalSize() {
     applyArticleModalSize(null, null, true);
+    if (state.readerMode === "book") {
+      applyPanelSizeForCurrentMode();
+      repaginateAndRenderBook(true);
+    }
+  }
+
+  function parseArticleSemanticBlocks(item, siteData) {
+    const paragraphs = Array.isArray(item.isi) ? item.isi : [item.ringkasan];
+    const dropCapEnabled = item.dropCap !== false;
+    const blocks = [];
+    const tocItems = [];
+    let olOffset = 0;
+    let dropCapConsumed = false;
+    let tocCounter = 0;
+
+    paragraphs.forEach((p) => {
+      const rawLines = distributeMultilineRichTags(p)
+        .split(/\r?\n+/)
+        .filter((l) => l !== "");
+      const parsedLines = (rawLines.length ? rawLines : [p]).map((l) => parseRichBlockMeta(l));
+      const hasLists = parsedLines.some((pl) => pl.listType === "ul" || pl.listType === "ol");
+      const hasSpecial = parsedLines.some((pl) => pl.isPageBreak || pl.isHeading);
+      const firstMeta = parsedLines[0] || {
+        isPageBreak: false,
+        isHeading: false,
+        isQuote: false,
+        listType: "",
+        align: "",
+        indent: 0,
+        indentMode: "all",
+        inner: "",
+      };
+      const allSameBlock =
+        !hasLists &&
+        !hasSpecial &&
+        parsedLines.every(
+          (pl) =>
+            pl.isQuote === firstMeta.isQuote &&
+            pl.align === firstMeta.align &&
+            pl.indent === firstMeta.indent &&
+            pl.indentMode === firstMeta.indentMode
+        );
+
+      if (allSameBlock) {
+        olOffset = 0;
+        const combinedInner = parsedLines.map((pl) => pl.inner).join("\n");
+        const pDir = detectTextDirection(combinedInner);
+        const isFirstCandidate = !dropCapConsumed;
+        dropCapConsumed = true;
+        const cls = buildRichBlockClasses(firstMeta, pDir, isFirstCandidate, dropCapEnabled);
+        const styleStr = buildRichBlockStyle(firstMeta);
+        const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
+        const renderedInner =
+          parsedLines.length > 1
+            ? parsedLines
+                .map((pl) => {
+                  const lineDir = detectTextDirection(pl.inner);
+                  return `<span dir="${lineDir}" class="block">${formatRichInlineHtml(pl.inner, siteData)}</span>`;
+                })
+                .join("")
+            : formatRichInlineHtml(firstMeta.inner, siteData);
+
+        if (firstMeta.isQuote) {
+          blocks.push({
+            type: "blockquote",
+            html: `<blockquote dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</blockquote>`,
+          });
+        } else {
+          blocks.push({
+            type: "paragraph",
+            html: `<p dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</p>`,
+          });
+        }
+        return;
+      }
+
+      let i = 0;
+      while (i < parsedLines.length) {
+        const lineMeta = parsedLines[i];
+        if (lineMeta.isPageBreak) {
+          olOffset = 0;
+          blocks.push({ type: "pagebreak", html: "" });
+          i += 1;
+          continue;
+        }
+
+        if (lineMeta.listType === "ul" || lineMeta.listType === "ol") {
+          dropCapConsumed = true;
+          const listTag = lineMeta.listType;
+          const startNum = listTag === "ol" ? olOffset + 1 : 0;
+          const firstListDir = detectTextDirection(lineMeta.inner);
+          const listItems = [];
+          while (
+            i < parsedLines.length &&
+            !parsedLines[i].isPageBreak &&
+            parsedLines[i].listType === listTag
+          ) {
+            const lm = parsedLines[i];
+            const liDir = detectTextDirection(lm.inner);
+            const liCls = buildRichBlockClasses(lm, liDir, false, false);
+            const liStyle = buildRichBlockStyle(lm);
+            const liStyleAttr = liStyle ? ` style="${escapeHtml(liStyle)}"` : "";
+            const liInline = formatRichInlineHtml(lm.inner, siteData);
+            listItems.push(`<li dir="${liDir}"${liCls ? ` class="${liCls}"` : ""}${liStyleAttr}>${liInline}</li>`);
+            if (listTag === "ol") olOffset += 1;
+            i += 1;
+          }
+          const startAttr = listTag === "ol" && startNum > 1 ? ` start="${startNum}"` : "";
+          blocks.push({
+            type: "list",
+            listTag,
+            start: startNum,
+            dir: firstListDir,
+            items: listItems,
+            html: `<${listTag} dir="${firstListDir}"${startAttr} class="ct-list ct-list-${listTag}">${listItems.join("")}</${listTag}>`,
+          });
+          continue;
+        }
+
+        olOffset = 0;
+        const lineDir = detectTextDirection(lineMeta.inner);
+        const styleStr = buildRichBlockStyle(lineMeta);
+        const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
+        const inlineHtml = formatRichInlineHtml(lineMeta.inner, siteData);
+
+        if (lineMeta.isHeading) {
+          tocCounter += 1;
+          const tocId = `ct-toc-${tocCounter}`;
+          const label = stripRichTags(lineMeta.inner).trim() || `Subjudul ${tocCounter}`;
+          const cls = buildRichBlockClasses(lineMeta, lineDir, false, false);
+          const headingHtml = `<h2 data-toc-id="${tocId}" dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</h2>`;
+          blocks.push({
+            type: "heading",
+            tocId,
+            label,
+            html: headingHtml,
+          });
+          tocItems.push({ tocId, label, pageIndex: 0 });
+        } else if (lineMeta.isQuote) {
+          dropCapConsumed = true;
+          const cls = buildRichBlockClasses(lineMeta, lineDir, false, false);
+          blocks.push({
+            type: "blockquote",
+            html: `<blockquote dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</blockquote>`,
+          });
+        } else {
+          const isFirstCandidate = !dropCapConsumed;
+          dropCapConsumed = true;
+          const cls = buildRichBlockClasses(lineMeta, lineDir, isFirstCandidate, dropCapEnabled);
+          blocks.push({
+            type: "paragraph",
+            html: `<p dir="${lineDir}" class="${cls}"${styleAttr}>${inlineHtml}</p>`,
+          });
+        }
+        i += 1;
+      }
+    });
+
+    return { blocks, tocItems };
+  }
+
+  function createDomFromHtml(html) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return tmp.firstElementChild;
+  }
+
+  function splitElementByWordRange(sourceEl, maxHeightFn, measureBox) {
+    // Jika teks sangat pendek atau tidak bisa dibagi lagi, kembalikan apa adanya
+    const countWords = (root) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      let total = 0;
+      let n = walker.nextNode();
+      while (n) {
+        const parts = String(n.nodeValue || "").match(/\S+\s*|\s+/g) || [];
+        total += parts.length;
+        n = walker.nextNode();
+      }
+      return total;
+    };
+
+    const totalTokens = countWords(sourceEl);
+    if (totalTokens <= 4) {
+      return [sourceEl.outerHTML];
+    }
+
+    const sliceClone = (el, startTok, endTok, isContinuation) => {
+      let curTok = 0;
+      const walkClone = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const parts = String(node.nodeValue || "").match(/\S+\s*|\s+/g) || [];
+          let kept = "";
+          parts.forEach((tok) => {
+            if (curTok >= startTok && curTok < endTok) {
+              kept += tok;
+            }
+            curTok += 1;
+          });
+          return kept ? document.createTextNode(kept) : null;
+        }
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const clone = node.cloneNode(false);
+          if (isContinuation && node === el) {
+            clone.classList.remove("prose-dropcap");
+          }
+          Array.from(node.childNodes).forEach((ch) => {
+            const slicedCh = walkClone(ch);
+            if (slicedCh) clone.appendChild(slicedCh);
+          });
+          if (!clone.childNodes.length && !["BR", "HR"].includes(clone.tagName)) {
+            return null;
+          }
+          return clone;
+        }
+        return null;
+      };
+      return walkClone(el);
+    };
+
+    const outChunks = [];
+    let cursor = 0;
+    while (cursor < totalTokens) {
+      let lo = cursor + 1;
+      let hi = totalTokens;
+      let best = cursor + 1;
+
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const testEl = sliceClone(sourceEl, cursor, mid, cursor > 0);
+        if (!testEl) {
+          lo = mid + 1;
+          continue;
+        }
+        measureBox.appendChild(testEl);
+        const fits = maxHeightFn();
+        measureBox.removeChild(testEl);
+        if (fits) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+
+      const finalEl = sliceClone(sourceEl, cursor, best, cursor > 0);
+      if (finalEl) {
+        outChunks.push(finalEl.outerHTML);
+      }
+      if (best <= cursor) {
+        break;
+      }
+      cursor = best;
+      if (cursor < totalTokens) {
+        while (measureBox.firstChild) measureBox.removeChild(measureBox.firstChild);
+      }
+    }
+    return outChunks.length ? outChunks : [sourceEl.outerHTML];
+  }
+
+  function buildBookHeaderHtml(item, siteData) {
+    const titleDir = detectTextDirection(item.judul);
+    const titleAlignCls = titleDir === "rtl" ? "text-right" : "";
+    return `
+      <header class="mb-5 pb-4 border-b border-stone-200/90">
+        <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 mb-2">
+          <span class="font-semibold theme-text-accent">${escapeHtml(getItemCategory(item, "tulisan"))}</span>
+          <span aria-hidden="true">·</span>
+          <span>${escapeHtml(item.tanggal)}</span>
+        </div>
+        <h2 dir="${titleDir}" class="font-theme-display text-xl sm:text-2xl font-medium leading-snug text-[#1F2937] headline-balance ${titleAlignCls}">
+          ${formatRichInlineHtml(item.judul, siteData)}
+        </h2>
+      </header>
+    `;
+  }
+
+  function paginateArticleForBook() {
+    const item = state.activeArticle;
+    const siteData = state.currentData || window.SITE_DATA;
+    if (!item || !modalEls.bookPagesHost) {
+      state.bookPages = [];
+      state.bookToc = [];
+      return;
+    }
+
+    const blocks = state.articleBlocks || [];
+    const spread = getEffectiveBookSpread();
+    const hostRect = modalEls.bookPagesHost.getBoundingClientRect
+      ? modalEls.bookPagesHost.getBoundingClientRect()
+      : { width: 640, height: 460 };
+
+    const rawHostW = hostRect.width > 80 ? hostRect.width : 640;
+    const rawHostH = hostRect.height > 120 ? hostRect.height : 460;
+    const sheetW =
+      spread === 2
+        ? Math.min(560, Math.max(240, Math.floor(rawHostW / 2)))
+        : Math.min(680, Math.max(260, Math.floor(rawHostW)));
+    const sheetH = Math.max(240, Math.floor(rawHostH));
+
+    const measureSheet = document.createElement("div");
+    measureSheet.className = "ct-book-sheet";
+    measureSheet.style.cssText = `position:fixed;left:-99999px;top:0;width:${sheetW}px;height:${sheetH}px;visibility:hidden;pointer-events:none;z-index:-1;`;
+
+    const measureInner = document.createElement("div");
+    measureInner.className = "ct-book-page-inner";
+    const measureBody = document.createElement("div");
+    measureBody.className = `font-prose text-[#1F2937] space-y-4 ${getArticleProseSizeClasses(state.fontSize)}`;
+    measureInner.appendChild(measureBody);
+
+    const measureFolio = document.createElement("div");
+    measureFolio.className = "ct-book-page-folio";
+    measureFolio.innerHTML = "<span>Hal. 1</span><span>1 / 1</span>";
+
+    measureSheet.appendChild(measureInner);
+    measureSheet.appendChild(measureFolio);
+    document.body.appendChild(measureSheet);
+
+    const bookHeaderHtml = buildBookHeaderHtml(item, siteData);
+    const fitsCurrentSheet = () => measureInner.scrollHeight <= measureInner.clientHeight - 4;
+
+    const pages = [];
+    const tocPageMap = new Map();
+    let curHeaderHtml = bookHeaderHtml;
+    let curNodes = [];
+
+    const resetMeasureBox = (withHeader) => {
+      measureInner.innerHTML = "";
+      if (withHeader) {
+        const hdrEl = createDomFromHtml(withHeader);
+        if (hdrEl) measureInner.appendChild(hdrEl);
+      }
+      measureBody.innerHTML = "";
+      measureInner.appendChild(measureBody);
+    };
+
+    const flushPage = () => {
+      if (!curHeaderHtml && !curNodes.length) return;
+      const bodyHtml = curNodes.map((n) => n.html).join("");
+      pages.push({
+        headerHtml: curHeaderHtml,
+        bodyHtml,
+        firstTocId: (curNodes.find((n) => n.tocId) || {}).tocId || "",
+        blockCount: curNodes.length,
+      });
+      curHeaderHtml = "";
+      curNodes = [];
+      resetMeasureBox(false);
+    };
+
+    resetMeasureBox(curHeaderHtml);
+
+    try {
+      blocks.forEach((blk) => {
+        if (blk.type === "pagebreak") {
+          if (curNodes.length > 0 || curHeaderHtml) {
+            flushPage();
+          }
+          return;
+        }
+
+        if (blk.type === "list") {
+          let remainingItems = [...blk.items];
+          let listOffset = blk.start || 1;
+          while (remainingItems.length > 0) {
+            const makeListHtml = (itemsSlice, startVal) => {
+              const startAttr = blk.listTag === "ol" && startVal > 1 ? ` start="${startVal}"` : "";
+              return `<${blk.listTag} dir="${blk.dir}"${startAttr} class="ct-list ct-list-${blk.listTag}">${itemsSlice.join("")}</${blk.listTag}>`;
+            };
+
+            // Cari berapa banyak <li> yang muat di halaman ini
+            let fitCount = 0;
+            for (let k = 1; k <= remainingItems.length; k += 1) {
+              const candEl = createDomFromHtml(makeListHtml(remainingItems.slice(0, k), listOffset));
+              measureBody.appendChild(candEl);
+              const ok = fitsCurrentSheet();
+              measureBody.removeChild(candEl);
+              if (ok) {
+                fitCount = k;
+              } else {
+                break;
+              }
+            }
+
+            if (fitCount === 0) {
+              if (curNodes.length > 0) {
+                // Cegah heading menggantung sendirian sebelum daftar di halaman baru
+                if (curNodes[curNodes.length - 1].type === "heading" && (curNodes.length > 1 || !curHeaderHtml)) {
+                  const orphanHeading = curNodes.pop();
+                  flushPage();
+                  curNodes.push(orphanHeading);
+                  if (orphanHeading.tocId) tocPageMap.set(orphanHeading.tocId, pages.length);
+                  const hEl = createDomFromHtml(orphanHeading.html);
+                  if (hEl) measureBody.appendChild(hEl);
+                  continue;
+                }
+                flushPage();
+                continue;
+              }
+              // Halaman sudah kosong tapi item tunggal sangat tinggi: paksa 1 item agar tidak looping
+              fitCount = 1;
+            }
+
+            const placedSlice = remainingItems.slice(0, fitCount);
+            const placedHtml = makeListHtml(placedSlice, listOffset);
+            const placedEl = createDomFromHtml(placedHtml);
+            if (placedEl) measureBody.appendChild(placedEl);
+            curNodes.push({ type: "list", html: placedHtml });
+
+            remainingItems = remainingItems.slice(fitCount);
+            listOffset += fitCount;
+            if (remainingItems.length > 0) {
+              flushPage();
+            }
+          }
+          return;
+        }
+
+        const domEl = createDomFromHtml(blk.html);
+        if (!domEl) return;
+        measureBody.appendChild(domEl);
+        if (fitsCurrentSheet()) {
+          curNodes.push({
+            type: blk.type,
+            tocId: blk.tocId || "",
+            html: blk.html,
+          });
+          if (blk.tocId) {
+            tocPageMap.set(blk.tocId, pages.length);
+          }
+          return;
+        }
+        measureBody.removeChild(domEl);
+
+        // Tidak muat pada halaman berjalan
+        if (curNodes.length > 0) {
+          // Proteksi yatim Subjudul Bab: jika blok terakhir halaman ini adalah heading, pindahkan ke halaman berikutnya
+          let movedHeading = null;
+          if (curNodes[curNodes.length - 1].type === "heading" && (curNodes.length > 1 || curHeaderHtml === "")) {
+            movedHeading = curNodes.pop();
+          }
+          flushPage();
+          if (movedHeading) {
+            curNodes.push(movedHeading);
+            if (movedHeading.tocId) tocPageMap.set(movedHeading.tocId, pages.length);
+            const hEl = createDomFromHtml(movedHeading.html);
+            if (hEl) measureBody.appendChild(hEl);
+          }
+
+          measureBody.appendChild(domEl);
+          if (fitsCurrentSheet()) {
+            curNodes.push({
+              type: blk.type,
+              tocId: blk.tocId || "",
+              html: blk.html,
+            });
+            if (blk.tocId) tocPageMap.set(blk.tocId, pages.length);
+            return;
+          }
+          measureBody.removeChild(domEl);
+        }
+
+        // Masih tidak muat di halaman baru (blok paragraf/kutipan sangat panjang) -> pecah rapi per kata
+        if (blk.type === "paragraph" || blk.type === "blockquote") {
+          const chunks = splitElementByWordRange(domEl, fitsCurrentSheet, measureBody);
+          chunks.forEach((chunkHtml, cIdx) => {
+            if (cIdx > 0) flushPage();
+            const chEl = createDomFromHtml(chunkHtml);
+            if (chEl) measureBody.appendChild(chEl);
+            curNodes.push({ type: blk.type, html: chunkHtml });
+          });
+        } else {
+          measureBody.appendChild(domEl);
+          curNodes.push({
+            type: blk.type,
+            tocId: blk.tocId || "",
+            html: blk.html,
+          });
+          if (blk.tocId) tocPageMap.set(blk.tocId, pages.length);
+        }
+      });
+
+      if (curNodes.length > 0 || curHeaderHtml) {
+        flushPage();
+      }
+      if (!pages.length) {
+        pages.push({ headerHtml: bookHeaderHtml, bodyHtml: "", firstTocId: "", blockCount: 0 });
+      }
+    } finally {
+      measureSheet.remove();
+    }
+
+    state.bookPages = pages;
+    state.bookToc = (state.bookToc || []).map((t) => ({
+      ...t,
+      pageIndex: tocPageMap.has(t.tocId) ? tocPageMap.get(t.tocId) : 0,
+    }));
+  }
+
+  function renderBookPagesView() {
+    if (!modalEls.bookPagesHost || !state.activeArticle) return;
+    const pages = state.bookPages || [];
+    const total = Math.max(1, pages.length);
+    const spread = getEffectiveBookSpread();
+
+    let pageIdx = Math.max(0, Math.min(total - 1, state.bookCurrentPage || 0));
+    if (spread === 2 && pageIdx % 2 === 1) {
+      pageIdx -= 1;
+    }
+    state.bookCurrentPage = pageIdx;
+
+    const animCls =
+      state.bookTurnDir === "next"
+        ? " ct-book-anim-next"
+        : state.bookTurnDir === "prev"
+        ? " ct-book-anim-prev"
+        : "";
+    state.bookTurnDir = "";
+
+    const shortTitle = stripRichTags(state.activeArticle.judul || "Catatan Teduh");
+    const proseCls = `font-prose text-[#1F2937] space-y-4 ${getArticleProseSizeClasses(state.fontSize)}`;
+
+    const buildSheetHtml = (idx, sideCls) => {
+      const pg = pages[idx];
+      if (!pg) {
+        return `
+          <div class="ct-book-sheet ${sideCls} ct-book-sheet-blank">
+            <div class="ct-book-page-inner flex items-center justify-center">
+              <span class="text-xs italic text-gray-400 select-none">— Akhir Tulisan —</span>
+            </div>
+            <div class="ct-book-page-folio">
+              <span>${escapeHtml(shortTitle)}</span>
+              <span class="tabular-nums">—</span>
+            </div>
+          </div>
+        `;
+      }
+      return `
+        <div class="ct-book-sheet ${sideCls}" data-book-page-index="${idx}">
+          <div class="ct-book-page-inner">
+            ${pg.headerHtml || ""}
+            <div class="${proseCls}">${pg.bodyHtml || ""}</div>
+          </div>
+          <div class="ct-book-page-folio">
+            <span class="truncate max-w-[70%]">${escapeHtml(shortTitle)}</span>
+            <span class="tabular-nums font-medium">Hal. ${idx + 1} / ${total}</span>
+          </div>
+        </div>
+      `;
+    };
+
+    if (spread === 2) {
+      modalEls.bookPagesHost.innerHTML = `
+        <div class="ct-book-spread${animCls}">
+          ${buildSheetHtml(pageIdx, "ct-book-sheet-left")}
+          ${buildSheetHtml(pageIdx + 1, "ct-book-sheet-right")}
+        </div>
+      `;
+    } else {
+      modalEls.bookPagesHost.innerHTML = `
+        <div class="ct-book-spread${animCls}">
+          ${buildSheetHtml(pageIdx, "ct-book-sheet-single")}
+        </div>
+      `;
+    }
+
+    const canPrev = pageIdx > 0;
+    const canNext = pageIdx + spread < total;
+    if (modalEls.bookPrevBtn) modalEls.bookPrevBtn.disabled = !canPrev;
+    if (modalEls.bookNextBtn) modalEls.bookNextBtn.disabled = !canNext;
+    if (modalEls.bookEdgePrev) modalEls.bookEdgePrev.disabled = !canPrev;
+    if (modalEls.bookEdgeNext) modalEls.bookEdgeNext.disabled = !canNext;
+
+    if (modalEls.bookPageLabel) {
+      if (spread === 2 && pageIdx + 1 < total) {
+        modalEls.bookPageLabel.textContent = `Hal. ${pageIdx + 1}–${pageIdx + 2} / ${total}`;
+      } else {
+        modalEls.bookPageLabel.textContent = `Hal. ${pageIdx + 1} / ${total}`;
+      }
+    }
+
+    updateReadingProgress();
+    renderTocDrawerList();
+  }
+
+  function repaginateAndRenderBook(preservePageRatio) {
+    if (state.readerMode !== "book" || !state.activeArticle) return;
+    const prevTotal = Math.max(1, state.bookPages.length);
+    const ratio = preservePageRatio && prevTotal > 1 ? state.bookCurrentPage / (prevTotal - 1) : 0;
+    paginateArticleForBook();
+    const newTotal = Math.max(1, state.bookPages.length);
+    if (preservePageRatio && newTotal > 1) {
+      state.bookCurrentPage = Math.round(ratio * (newTotal - 1));
+    } else if (!preservePageRatio) {
+      state.bookCurrentPage = 0;
+    }
+    renderBookPagesView();
+  }
+
+  function stepBookPage(delta) {
+    if (state.readerMode !== "book" || !state.bookPages.length) return;
+    const spread = getEffectiveBookSpread();
+    const total = state.bookPages.length;
+    const step = spread * (delta > 0 ? 1 : -1);
+    let nextIdx = state.bookCurrentPage + step;
+    if (nextIdx < 0) nextIdx = 0;
+    const maxStart = spread === 2 ? Math.max(0, total - (total % 2 === 0 ? 2 : 1)) : Math.max(0, total - 1);
+    if (nextIdx > maxStart) nextIdx = maxStart;
+    if (nextIdx === state.bookCurrentPage) return;
+    state.bookTurnDir = delta > 0 ? "next" : "prev";
+    state.bookCurrentPage = nextIdx;
+    renderBookPagesView();
+  }
+
+  function renderTocDrawerList() {
+    if (!modalEls.tocList) return;
+    const toc = state.bookToc || [];
+    const totalPages = Math.max(1, (state.bookPages || []).length);
+
+    if (modalEls.tocCountBadge) {
+      modalEls.tocCountBadge.textContent = String(toc.length);
+      modalEls.tocCountBadge.classList.toggle("hidden", toc.length === 0);
+    }
+    if (modalEls.tocSubtitle) {
+      modalEls.tocSubtitle.textContent =
+        state.readerMode === "book"
+          ? `${toc.length} Subjudul Bab · ${totalPages} Halaman`
+          : `${toc.length} Subjudul Bab`;
+    }
+
+    const activeSpread = getEffectiveBookSpread();
+    const startBtn =
+      state.readerMode === "book"
+        ? `
+        <button
+          type="button"
+          data-toc-jump-page="0"
+          class="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+            state.bookCurrentPage === 0
+              ? "theme-bg-soft theme-text-accent font-semibold"
+              : "text-gray-700 hover:bg-stone-100"
+          }"
+        >
+          <span class="truncate">Halaman Pembuka</span>
+          <span class="text-[11px] text-gray-400 tabular-nums shrink-0">Hal. 1</span>
+        </button>
+      `
+        : "";
+
+    if (!toc.length) {
+      modalEls.tocList.innerHTML = `
+        ${startBtn}
+        <div class="mt-2 p-3 rounded-xl bg-stone-50 border border-stone-200/80 text-[11px] text-gray-500 leading-relaxed">
+          Tulisan ini belum memiliki <strong>Subjudul Bab</strong>. Penulis dapat menambahkannya lewat tombol <strong>Bab</strong> di Studio Editor.
+        </div>
+      `;
+      return;
+    }
+
+    const chapterHtml = toc
+      .map((entry, idx) => {
+        const isOnVisiblePage =
+          state.readerMode === "book" &&
+          entry.pageIndex >= state.bookCurrentPage &&
+          entry.pageIndex < state.bookCurrentPage + activeSpread;
+        return `
+          <button
+            type="button"
+            data-toc-jump-id="${escapeHtml(entry.tocId)}"
+            data-toc-jump-page="${entry.pageIndex}"
+            class="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+              isOnVisiblePage
+                ? "theme-bg-soft theme-text-accent font-semibold"
+                : "text-gray-700 hover:bg-stone-100"
+            }"
+          >
+            <span class="truncate">${idx + 1}. ${escapeHtml(entry.label)}</span>
+            ${
+              state.readerMode === "book"
+                ? `<span class="text-[11px] text-gray-400 tabular-nums shrink-0">Hal. ${entry.pageIndex + 1}</span>`
+                : ""
+            }
+          </button>
+        `;
+      })
+      .join("");
+
+    modalEls.tocList.innerHTML = startBtn + chapterHtml;
+  }
+
+  function setTocDrawerOpen(isOpen) {
+    state.tocOpen = Boolean(isOpen);
+    if (modalEls.tocDrawer) modalEls.tocDrawer.classList.toggle("hidden", !state.tocOpen);
+    if (modalEls.tocBackdrop) modalEls.tocBackdrop.classList.toggle("hidden", !state.tocOpen);
+    if (modalEls.tocToggleBtn) modalEls.tocToggleBtn.setAttribute("aria-expanded", state.tocOpen ? "true" : "false");
+    if (state.tocOpen) renderTocDrawerList();
+  }
+
+  function syncReaderModeUi() {
+    const isBook = state.readerMode === "book";
+    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
+
+    modalEls.readerModeButtons.forEach((btn) => {
+      const active = btn.dataset.readerMode === state.readerMode;
+      btn.classList.toggle("bg-white", active);
+      btn.classList.toggle("text-gray-900", active);
+      btn.classList.toggle("shadow-xs", active);
+      btn.classList.toggle("text-gray-600", !active);
+    });
+
+    if (modalEls.spreadToggleWrap) {
+      const showSpreadSwitch = isBook && vw >= 768;
+      modalEls.spreadToggleWrap.classList.toggle("hidden", !showSpreadSwitch);
+      modalEls.spreadToggleWrap.classList.toggle("inline-flex", showSpreadSwitch);
+    }
+
+    modalEls.bookSpreadButtons.forEach((btn) => {
+      const active = Number(btn.dataset.bookSpread) === state.bookSpread;
+      btn.classList.toggle("bg-white", active);
+      btn.classList.toggle("text-gray-900", active);
+      btn.classList.toggle("shadow-xs", active);
+      btn.classList.toggle("text-gray-600", !active);
+    });
+
+    if (modalEls.articleScroll) modalEls.articleScroll.classList.toggle("hidden", isBook);
+    if (modalEls.bookStage) {
+      modalEls.bookStage.classList.toggle("hidden", !isBook);
+      modalEls.bookStage.classList.toggle("flex", isBook);
+    }
+  }
+
+  function setArticleReaderMode(modeKey) {
+    state.readerMode = modeKey === "book" ? "book" : "scroll";
+    localStorage.setItem("catatan_teduh_reader_mode", state.readerMode);
+    syncReaderModeUi();
+    if (state.activeArticle && modalEls.articleModal && !modalEls.articleModal.classList.contains("hidden")) {
+      applyPanelSizeForCurrentMode();
+      if (state.readerMode === "book") {
+        requestAnimationFrame(() => {
+          paginateArticleForBook();
+          state.bookCurrentPage = Math.min(state.bookCurrentPage, Math.max(0, state.bookPages.length - 1));
+          renderBookPagesView();
+        });
+      } else {
+        updateReadingProgress();
+        renderTocDrawerList();
+      }
+    }
+  }
+
+  function setBookSpreadMode(spreadNum) {
+    state.bookSpread = Number(spreadNum) === 2 ? 2 : 1;
+    localStorage.setItem("catatan_teduh_book_spread", String(state.bookSpread));
+    syncReaderModeUi();
+    if (state.activeArticle && state.readerMode === "book") {
+      applyPanelSizeForCurrentMode();
+      requestAnimationFrame(() => {
+        repaginateAndRenderBook(true);
+      });
+    }
+  }
+
+  function exportArticleToPdf() {
+    const item = state.activeArticle;
+    const sheet = modalEls.pdfPrintSheet;
+    if (!item || !sheet) return;
+
+    const src = state.currentData || window.SITE_DATA || {};
+    const siteName = (src.profil && src.profil.namaWebsite) || "Catatan Teduh";
+    const ownerName = (src.profil && src.profil.namaPemilik) || "";
+    const blocks = state.articleBlocks || [];
+    const toc = state.bookToc || [];
+
+    const titleDir = detectTextDirection(item.judul);
+    const bodyHtml = blocks
+      .map((b) => (b.type === "pagebreak" ? '<div class="ct-print-pagebreak"></div>' : b.html))
+      .join("");
+
+    const tocPrintHtml =
+      toc.length >= 2
+        ? `
+        <nav style="margin: 14px 0 20px; padding: 12px 16px; background: #faf9f6; border: 1px solid #e7e5e4; border-radius: 10px;">
+          <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #065f46; margin-bottom: 6px;">Daftar Isi</div>
+          <ol style="margin: 0; padding-left: 18px; font-size: 10.5pt; color: #374151; line-height: 1.65;">
+            ${toc.map((t) => `<li>${escapeHtml(t.label)}</li>`).join("")}
+          </ol>
+        </nav>
+      `
+        : "";
+
+    sheet.innerHTML = `
+      <article>
+        <header style="padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1.5px solid #d6d3d1;">
+          <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9.5pt; color: #4b5563; margin-bottom: 6px;">
+            <strong style="color: #065f46;">${escapeHtml(siteName)}</strong>
+            <span> · ${escapeHtml(getItemCategory(item, "tulisan"))}</span>
+            <span> · ${escapeHtml(item.tanggal)}</span>
+            ${ownerName ? `<span> · Oleh ${escapeHtml(ownerName)}</span>` : ""}
+          </div>
+          <h1 dir="${titleDir}" style="font-family: var(--font-heading, 'Fraunces', serif); font-size: 21pt; font-weight: 600; line-height: 1.3; color: #111827; margin: 0;${titleDir === "rtl" ? " text-align: right;" : ""}">
+            ${formatRichInlineHtml(item.judul, src)}
+          </h1>
+        </header>
+        ${tocPrintHtml}
+        <div class="font-prose space-y-4">
+          ${bodyHtml}
+        </div>
+      </article>
+    `;
+
+    const prevTitle = document.title;
+    const cleanPdfTitle = stripRichTags(item.judul || "Tulisan")
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .trim();
+    document.title = cleanPdfTitle ? `${cleanPdfTitle} — ${siteName}` : siteName;
+
+    let restored = false;
+    const restoreTitle = () => {
+      if (restored) return;
+      restored = true;
+      document.title = prevTitle;
+    };
+    window.addEventListener("afterprint", restoreTitle, { once: true });
+    setTimeout(restoreTitle, 4000);
+
+    try {
+      window.print();
+    } catch (_e) {
+      restoreTitle();
+    }
   }
 
   function openArticleModal(articleId) {
@@ -2329,6 +3286,10 @@
     if (!item) return;
 
     state.activeArticle = item;
+    state.bookCurrentPage = 0;
+    state.bookTurnDir = "";
+    setTocDrawerOpen(false);
+
     modalEls.articleMeta.innerHTML = `
       <span class="font-semibold theme-text-accent">${escapeHtml(getItemCategory(item, "tulisan"))}</span>
       <span aria-hidden="true">·</span>
@@ -2339,66 +3300,16 @@
     modalEls.articleTitle.classList.toggle("text-right", titleDir === "rtl");
     modalEls.articleTitle.innerHTML = formatRichInlineHtml(item.judul, src);
 
-    const paragraphs = Array.isArray(item.isi) ? item.isi : [item.ringkasan];
-    const dropCapEnabled = item.dropCap !== false;
-    let olOffset = 0;
-    modalEls.articleBody.innerHTML = paragraphs
-      .map((p, idx) => {
-        const rawLines = distributeMultilineRichTags(p)
-          .split(/\r?\n+/)
-          .filter((l) => l !== "");
-        const parsedLines = (rawLines.length ? rawLines : [p]).map((l) => parseRichBlockMeta(l));
-        const hasLists = parsedLines.some((pl) => pl.listType === "ul" || pl.listType === "ol");
-        const firstMeta = parsedLines[0] || {
-          isQuote: false,
-          listType: "",
-          align: "",
-          indent: 0,
-          indentMode: "all",
-          inner: "",
-        };
-        const allSameBlock =
-          !hasLists &&
-          parsedLines.every(
-            (pl) =>
-              pl.isQuote === firstMeta.isQuote &&
-              pl.align === firstMeta.align &&
-              pl.indent === firstMeta.indent &&
-              pl.indentMode === firstMeta.indentMode
-          );
+    const parsedArticle = parseArticleSemanticBlocks(item, src);
+    state.articleBlocks = parsedArticle.blocks;
+    state.bookToc = parsedArticle.tocItems;
 
-        if (allSameBlock) {
-          olOffset = 0;
-          const combinedInner = parsedLines.map((pl) => pl.inner).join("\n");
-          const pDir = detectTextDirection(combinedInner);
-          const cls = buildRichBlockClasses(firstMeta, pDir, idx === 0, dropCapEnabled);
-          const styleStr = buildRichBlockStyle(firstMeta);
-          const styleAttr = styleStr ? ` style="${escapeHtml(styleStr)}"` : "";
-          const renderedInner =
-            parsedLines.length > 1
-              ? parsedLines
-                  .map((pl) => {
-                    const lineDir = detectTextDirection(pl.inner);
-                    return `<span dir="${lineDir}" class="block">${formatRichInlineHtml(pl.inner, src)}</span>`;
-                  })
-                  .join("")
-              : formatRichInlineHtml(firstMeta.inner, src);
-
-          if (firstMeta.isQuote) {
-            return `<blockquote dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</blockquote>`;
-          }
-          return `<p dir="${pDir}" class="${cls}"${styleAttr}>${renderedInner}</p>`;
-        }
-
-        const renderedBlock = renderParsedRichLines(parsedLines, src, {
-          isArticle: true,
-          isFirstParagraph: idx === 0,
-          dropCapEnabled,
-          olStartOffset: olOffset,
-        });
-        olOffset = renderedBlock.trailingOlCount;
-        return renderedBlock.html;
-      })
+    modalEls.articleBody.innerHTML = parsedArticle.blocks
+      .map((blk) =>
+        blk.type === "pagebreak"
+          ? '<div class="ct-scroll-page-divider" aria-hidden="true"><span>Halaman Berikutnya</span></div>'
+          : blk.html
+      )
       .join("");
 
     const shareText = `${stripRichTags(item.judul)}\n\n${stripRichTags(item.ringkasan)}\n\nBaca selengkapnya di: ${window.location.href}`;
@@ -2406,26 +3317,33 @@
     if (modalEls.articleCopyLabel) modalEls.articleCopyLabel.textContent = "Salin Teks";
 
     applyArticleFontSize(state.fontSize);
-
-    const vw = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 1280;
-    const savedSize = vw >= 640 ? getSavedArticleModalSize() : null;
-    if (savedSize) {
-      applyArticleModalSize(savedSize.width, savedSize.height, false);
-    } else {
-      applyArticleModalSize(null, null, false);
-    }
+    syncReaderModeUi();
+    applyPanelSizeForCurrentMode();
 
     modalEls.articleModal.classList.remove("hidden");
     if (modalEls.articleScroll) modalEls.articleScroll.scrollTop = 0;
-    updateReadingProgress();
     document.body.style.overflow = "hidden";
+
+    if (state.readerMode === "book") {
+      requestAnimationFrame(() => {
+        paginateArticleForBook();
+        renderBookPagesView();
+      });
+    } else {
+      renderTocDrawerList();
+      updateReadingProgress();
+    }
+
     modalEls.articleClose.focus();
   }
 
   function closeArticleModal() {
+    setTocDrawerOpen(false);
     modalEls.articleModal.classList.add("hidden");
     document.body.style.overflow = "";
     state.activeArticle = null;
+    state.bookPages = [];
+    state.articleBlocks = [];
   }
 
   function openLightbox(flyerId) {
@@ -2605,13 +3523,109 @@
     modalEls.fontButtons.forEach((btn) => {
       btn.addEventListener("click", () => applyArticleFontSize(btn.dataset.fontSize));
     });
+    modalEls.readerModeButtons.forEach((btn) => {
+      btn.addEventListener("click", () => setArticleReaderMode(btn.dataset.readerMode));
+    });
+    modalEls.bookSpreadButtons.forEach((btn) => {
+      btn.addEventListener("click", () => setBookSpreadMode(btn.dataset.bookSpread));
+    });
+    if (modalEls.tocToggleBtn) {
+      modalEls.tocToggleBtn.addEventListener("click", () => setTocDrawerOpen(!state.tocOpen));
+    }
+    if (modalEls.tocCloseBtn) {
+      modalEls.tocCloseBtn.addEventListener("click", () => setTocDrawerOpen(false));
+    }
+    if (modalEls.tocBackdrop) {
+      modalEls.tocBackdrop.addEventListener("click", () => setTocDrawerOpen(false));
+    }
+    if (modalEls.tocList) {
+      modalEls.tocList.addEventListener("click", (e) => {
+        const jumpBtn = e.target.closest("[data-toc-jump-page]");
+        if (!jumpBtn) return;
+        const targetPage = Math.max(0, parseInt(jumpBtn.dataset.tocJumpPage || "0", 10) || 0);
+        const tocId = jumpBtn.dataset.tocJumpId || "";
+        setTocDrawerOpen(false);
+        if (state.readerMode === "book") {
+          const spread = getEffectiveBookSpread();
+          const normalizedPage = spread === 2 && targetPage % 2 === 1 ? targetPage - 1 : targetPage;
+          if (normalizedPage !== state.bookCurrentPage) {
+            state.bookTurnDir = normalizedPage > state.bookCurrentPage ? "next" : "prev";
+            state.bookCurrentPage = normalizedPage;
+            renderBookPagesView();
+          }
+        } else if (tocId && modalEls.articleBody) {
+          const targetHeading = modalEls.articleBody.querySelector(`[data-toc-id="${tocId}"]`);
+          if (targetHeading && targetHeading.scrollIntoView) {
+            targetHeading.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }
+      });
+    }
+    if (modalEls.savePdfBtn) {
+      modalEls.savePdfBtn.addEventListener("click", exportArticleToPdf);
+    }
+    if (modalEls.bookPrevBtn) {
+      modalEls.bookPrevBtn.addEventListener("click", () => stepBookPage(-1));
+    }
+    if (modalEls.bookNextBtn) {
+      modalEls.bookNextBtn.addEventListener("click", () => stepBookPage(1));
+    }
+    if (modalEls.bookEdgePrev) {
+      modalEls.bookEdgePrev.addEventListener("click", () => stepBookPage(-1));
+    }
+    if (modalEls.bookEdgeNext) {
+      modalEls.bookEdgeNext.addEventListener("click", () => stepBookPage(1));
+    }
+
+    // Gestur geser kiri/kanan (Touch & Pointer Swipe) di Mode Buku
+    if (modalEls.bookPagesHost) {
+      let swipeTrack = null;
+      modalEls.bookPagesHost.addEventListener("pointerdown", (e) => {
+        if (state.readerMode !== "book") return;
+        if (e.button && e.button !== 0) return;
+        if (e.target && e.target.closest && e.target.closest("a, button, input, select, [data-modal-resize]")) {
+          return;
+        }
+        const existingSel = window.getSelection ? String(window.getSelection() || "").trim() : "";
+        swipeTrack = {
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          startedAt: Date.now(),
+          hadSelection: existingSel.length > 0,
+        };
+      });
+      modalEls.bookPagesHost.addEventListener("pointerup", (e) => {
+        if (!swipeTrack || swipeTrack.pointerId !== e.pointerId) return;
+        const track = swipeTrack;
+        swipeTrack = null;
+        if (state.readerMode !== "book") return;
+        const currentSel = window.getSelection ? String(window.getSelection() || "").trim() : "";
+        if (track.hadSelection || currentSel.length > 0) return;
+        const dx = e.clientX - track.startX;
+        const dy = e.clientY - track.startY;
+        const elapsed = Date.now() - track.startedAt;
+        if (elapsed > 900) return;
+        if (Math.abs(dx) >= 48 && Math.abs(dy) <= Math.abs(dx) * 0.72) {
+          if (dx < 0) {
+            stepBookPage(1);
+          } else {
+            stepBookPage(-1);
+          }
+        }
+      });
+      modalEls.bookPagesHost.addEventListener("pointercancel", () => {
+        swipeTrack = null;
+      });
+    }
+
     if (modalEls.articleScroll) {
       modalEls.articleScroll.addEventListener("scroll", updateReadingProgress);
     }
     if (modalEls.articleCopy) {
       modalEls.articleCopy.addEventListener("click", async () => {
         if (!state.activeArticle) return;
-        const txt = `${stripRichTags(state.activeArticle.judul)}\n\n${(state.activeArticle.isi || []).map(stripRichTags).join("\n\n")}`;
+        const txt = `${stripRichTags(state.activeArticle.judul)}\n\n${(state.activeArticle.isi || []).map(stripRichTags).filter(Boolean).join("\n\n")}`;
         try {
           await navigator.clipboard.writeText(txt);
           if (modalEls.articleCopyLabel) modalEls.articleCopyLabel.textContent = "Tersalin";
@@ -2639,6 +3653,9 @@
           const targetWidth = Math.min(1120, maxWidth);
           const targetHeight = Math.min(Math.round(vh * 0.9), maxHeight);
           applyArticleModalSize(targetWidth, targetHeight, true);
+          if (state.readerMode === "book") {
+            requestAnimationFrame(() => repaginateAndRenderBook(true));
+          }
         }
       });
     }
@@ -2706,6 +3723,9 @@
             document.body.style.userSelect = prevUserSelect;
             document.documentElement.style.cursor = prevRootCursor;
             saveArticleModalSize(latestSize);
+            if (state.readerMode === "book") {
+              requestAnimationFrame(() => repaginateAndRenderBook(true));
+            }
           };
 
           window.addEventListener("pointermove", onPointerMove);
@@ -2718,15 +3738,10 @@
     if (typeof window !== "undefined") {
       window.addEventListener("resize", () => {
         if (!modalEls.articleModal || modalEls.articleModal.classList.contains("hidden")) return;
-        const panel = modalEls.articlePanel;
-        if (!panel || !panel.style) return;
-        if (window.innerWidth < 640) {
-          applyArticleModalSize(null, null, false);
-          return;
-        }
-        const saved = getSavedArticleModalSize();
-        if (saved) {
-          applyArticleModalSize(saved.width, saved.height, false);
+        syncReaderModeUi();
+        applyPanelSizeForCurrentMode();
+        if (state.readerMode === "book") {
+          requestAnimationFrame(() => repaginateAndRenderBook(true));
         }
       });
     }
@@ -2746,8 +3761,31 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        if (!modalEls.articleModal.classList.contains("hidden")) closeArticleModal();
+        if (!modalEls.articleModal.classList.contains("hidden")) {
+          if (state.tocOpen) {
+            setTocDrawerOpen(false);
+          } else {
+            closeArticleModal();
+          }
+          return;
+        }
         if (!modalEls.lightboxModal.classList.contains("hidden")) closeLightbox();
+      }
+      if (
+        !modalEls.articleModal.classList.contains("hidden") &&
+        state.readerMode === "book" &&
+        !["INPUT", "TEXTAREA", "SELECT"].includes((document.activeElement || {}).tagName)
+      ) {
+        if (e.key === "ArrowRight" || e.key === "PageDown") {
+          e.preventDefault();
+          stepBookPage(1);
+          return;
+        }
+        if (e.key === "ArrowLeft" || e.key === "PageUp") {
+          e.preventDefault();
+          stepBookPage(-1);
+          return;
+        }
       }
       if (
         e.key === "/" &&
@@ -2888,6 +3926,8 @@
     syncDynamicFonts,
     detectTextDirection,
     formatRichInlineHtml,
+    parseArticleSemanticBlocks,
+    exportArticleToPdf,
     normalizeSiteData,
     renderSiteInto,
     openArticleModal,

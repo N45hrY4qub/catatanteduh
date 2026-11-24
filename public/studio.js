@@ -168,6 +168,8 @@
     alignButtons: Array.from(document.querySelectorAll("[data-format-align]")),
     btnFormatUl: document.getElementById("btn-format-ul"),
     btnFormatOl: document.getElementById("btn-format-ol"),
+    btnFormatH2: document.getElementById("btn-format-h2"),
+    btnInsertPageBreak: document.getElementById("btn-insert-pagebreak"),
     btnFormatQuote: document.getElementById("btn-format-quote"),
     indentModeSelect: document.getElementById("studio-indent-mode-select"),
     btnFormatOutdent: document.getElementById("btn-format-outdent"),
@@ -596,6 +598,7 @@ window.SITE_DATA = ${serialized};
       els.studioPanelBody.innerHTML = renderTabPengaturan();
     }
     syncEditorDropCapPreview();
+    updateTulisanPageStats();
   }
 
   function buildFontSelectOptionsHtml() {
@@ -767,6 +770,10 @@ window.SITE_DATA = ${serialized};
     return parts.join(" ");
   }
 
+  function renderPageBreakEditorHtml() {
+    return `<div data-rt-page="true" contenteditable="false" class="ct-page-break-editor"><span>Pemisah Halaman</span><button type="button" data-remove-pagebreak="true" class="ct-page-break-remove" title="Hapus pemisah halaman" aria-label="Hapus pemisah halaman">&times;</button></div>`;
+  }
+
   function richTextToEditorHtml(rawText, isMultiline) {
     const input = String(rawText || "");
     if (!input) return "";
@@ -865,7 +872,8 @@ window.SITE_DATA = ${serialized};
     const parsedLines = input.split(/\r?\n/).map((line) => App.parseRichBlockMeta(line));
     const buildLineAttrs = (meta, dir) => {
       const clsList = [];
-      if (meta.isQuote && !meta.listType) clsList.push("ct-blockquote");
+      if (meta.isHeading && !meta.listType) clsList.push("ct-subheading");
+      if (meta.isQuote && !meta.listType && !meta.isHeading) clsList.push("ct-blockquote");
       if (meta.align) {
         clsList.push(`ct-align-${meta.align}`);
       } else if (dir === "rtl") {
@@ -902,11 +910,16 @@ window.SITE_DATA = ${serialized};
     let idx = 0;
     while (idx < parsedLines.length) {
       const meta = parsedLines[idx];
+      if (meta.isPageBreak) {
+        htmlChunks.push(renderPageBreakEditorHtml());
+        idx += 1;
+        continue;
+      }
       if (meta.listType === "ul" || meta.listType === "ol") {
         const listTag = meta.listType;
         const listDir = App.detectTextDirection(meta.inner);
         const liParts = [];
-        while (idx < parsedLines.length && parsedLines[idx].listType === listTag) {
+        while (idx < parsedLines.length && !parsedLines[idx].isPageBreak && parsedLines[idx].listType === listTag) {
           const lm = parsedLines[idx];
           const lDir = App.detectTextDirection(lm.inner);
           const lInner = lm.inner ? renderTokens(lm.inner) : "<br>";
@@ -918,7 +931,7 @@ window.SITE_DATA = ${serialized};
       }
 
       const dir = App.detectTextDirection(meta.inner);
-      const tag = meta.isQuote ? "blockquote" : "div";
+      const tag = meta.isHeading ? "h2" : meta.isQuote ? "blockquote" : "div";
       const inner = meta.inner ? renderTokens(meta.inner) : "<br>";
       htmlChunks.push(`<${tag} ${buildLineAttrs(meta, dir)}>${inner}</${tag}>`);
       idx += 1;
@@ -1033,14 +1046,16 @@ window.SITE_DATA = ${serialized};
   }
 
   function wrapBlockMetaTags(lineText, meta) {
+    if (meta && meta.isPageBreak) return "[page]";
     let out = String(lineText || "");
     if (!out) return "";
     const indent = App.normalizeIndentLevel(meta && meta.indent);
     const indentMode = App.normalizeIndentMode(meta && meta.indentMode);
     const align =
       meta && ["left", "center", "right", "justify"].includes(meta.align) ? meta.align : "";
-    const isQuote = Boolean(meta && meta.isQuote);
     const listType = meta && (meta.listType === "ul" || meta.listType === "ol") ? meta.listType : "";
+    const isHeading = !listType && Boolean(meta && meta.isHeading);
+    const isQuote = !listType && !isHeading && Boolean(meta && meta.isQuote);
     if (indent > 0) {
       const modeAttr = indentMode !== "all" ? ` mode=${indentMode}` : "";
       out = `[indent=${indent}${modeAttr}]${out}[/indent]`;
@@ -1048,6 +1063,8 @@ window.SITE_DATA = ${serialized};
     if (align) out = `[align=${align}]${out}[/align]`;
     if (listType) {
       out = `[${listType}]${out}[/${listType}]`;
+    } else if (isHeading) {
+      out = `[h2]${out}[/h2]`;
     } else if (isQuote) {
       out = `[quote]${out}[/quote]`;
     }
@@ -1056,7 +1073,10 @@ window.SITE_DATA = ${serialized};
 
   function getBlockNodeMeta(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) {
-      return { isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
+      return { isPageBreak: false, isHeading: false, isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
+    }
+    if (el.dataset && el.dataset.rtPage === "true") {
+      return { isPageBreak: true, isHeading: false, isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
     }
     let listType = "";
     if (el.tagName === "LI" && el.parentNode) {
@@ -1067,7 +1087,8 @@ window.SITE_DATA = ${serialized};
     } else if (el.tagName === "OL") {
       listType = "ol";
     }
-    const isQuote = !listType && (el.tagName === "BLOCKQUOTE" || (el.dataset && el.dataset.rtQuote === "true"));
+    const isHeading = !listType && (el.tagName === "H2" || (el.dataset && el.dataset.rtHeading === "true"));
+    const isQuote = !listType && !isHeading && (el.tagName === "BLOCKQUOTE" || (el.dataset && el.dataset.rtQuote === "true"));
     let align = (el.dataset && el.dataset.rtAlign) || "";
     if (!align && el.style && el.style.textAlign) {
       const stAlign = String(el.style.textAlign).toLowerCase();
@@ -1075,12 +1096,13 @@ window.SITE_DATA = ${serialized};
     }
     const indent = App.normalizeIndentLevel(el.dataset && el.dataset.rtIndent);
     const indentMode = App.normalizeIndentMode(el.dataset && el.dataset.rtIndentMode);
-    return { isQuote, listType, align, indent, indentMode };
+    return { isPageBreak: false, isHeading, isQuote, listType, align, indent, indentMode };
   }
 
   function applyBlockVisualMeta(el, meta, dir, isMultilineBlock) {
     if (!el || !el.classList) return;
-    const m = meta || { isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
+    if (el.dataset && el.dataset.rtPage === "true") return;
+    const m = meta || { isHeading: false, isQuote: false, listType: "", align: "", indent: 0, indentMode: "all" };
     const indent = App.normalizeIndentLevel(m.indent);
     const indentMode = App.normalizeIndentMode(m.indentMode);
 
@@ -1103,8 +1125,20 @@ window.SITE_DATA = ${serialized};
       if (el.style) el.style.removeProperty("--ct-indent-lv");
     }
 
+    const isHeading = Boolean(m.isHeading) && el.tagName !== "LI";
+    if (el.tagName !== "H2" && el.tagName !== "LI") {
+      if (isHeading) {
+        el.dataset.rtHeading = "true";
+      } else {
+        delete el.dataset.rtHeading;
+      }
+    } else {
+      delete el.dataset.rtHeading;
+    }
+
+    const isQuote = !isHeading && Boolean(m.isQuote) && el.tagName !== "LI";
     if (el.tagName !== "BLOCKQUOTE" && el.tagName !== "LI") {
-      if (m.isQuote) {
+      if (isQuote) {
         el.dataset.rtQuote = "true";
       } else {
         delete el.dataset.rtQuote;
@@ -1113,7 +1147,8 @@ window.SITE_DATA = ${serialized};
       delete el.dataset.rtQuote;
     }
 
-    el.classList.toggle("ct-blockquote", Boolean(m.isQuote && el.tagName !== "LI"));
+    el.classList.toggle("ct-subheading", isHeading);
+    el.classList.toggle("ct-blockquote", isQuote);
     ["left", "center", "right", "justify"].forEach((a) => {
       el.classList.toggle(`ct-align-${a}`, m.align === a);
     });
@@ -1143,6 +1178,12 @@ window.SITE_DATA = ${serialized};
 
     const children = Array.from(container.childNodes);
     children.forEach((child, idx) => {
+      if (child.nodeType === Node.ELEMENT_NODE && child.dataset && child.dataset.rtPage === "true") {
+        flushInline();
+        lines.push("[page]");
+        return;
+      }
+
       if (child.nodeType === Node.ELEMENT_NODE && (child.tagName === "UL" || child.tagName === "OL")) {
         flushInline();
         const listTag = child.tagName === "OL" ? "ol" : "ul";
@@ -1236,9 +1277,11 @@ window.SITE_DATA = ${serialized};
     const isDropCapOn = Boolean(dropCapInput && dropCapInput.checked);
     if (!isDropCapOn) return;
 
-    const firstTopBlock = Array.from(isiEditor.children).find((el) =>
-      ["DIV", "P", "BLOCKQUOTE", "UL", "OL"].includes(el.tagName)
-    );
+    const firstTopBlock = Array.from(isiEditor.children).find((el) => {
+      if (el.dataset && el.dataset.rtPage === "true") return false;
+      if (el.tagName === "H2") return false;
+      return ["DIV", "P", "BLOCKQUOTE", "UL", "OL"].includes(el.tagName);
+    });
 
     if (firstTopBlock) {
       if (["UL", "OL", "BLOCKQUOTE"].includes(firstTopBlock.tagName)) return;
@@ -1246,17 +1289,20 @@ window.SITE_DATA = ${serialized};
       if (!text) return;
       const meta = getBlockNodeMeta(firstTopBlock);
       const dir = firstTopBlock.getAttribute("dir") || App.detectTextDirection(text);
-      if (!meta.isQuote && !meta.listType && dir !== "rtl" && meta.align !== "center" && meta.align !== "right") {
+      if (!meta.isHeading && !meta.isQuote && !meta.listType && dir !== "rtl" && meta.align !== "center" && meta.align !== "right") {
         firstTopBlock.classList.add("prose-dropcap");
       }
       return;
     }
+
+    if (isiEditor.querySelector('h2, [data-rt-page="true"]')) return;
 
     const rootText = String(isiEditor.textContent || "").replace(/\u200B/g, "").trim();
     if (!rootText) return;
     const rootMeta = getBlockNodeMeta(isiEditor);
     const rootDir = isiEditor.getAttribute("dir") || App.detectTextDirection(rootText);
     if (
+      !rootMeta.isHeading &&
       !rootMeta.isQuote &&
       !rootMeta.listType &&
       rootDir !== "rtl" &&
@@ -1272,6 +1318,7 @@ window.SITE_DATA = ${serialized};
     const isMultiline = editorEl.dataset.multiline === "true";
     if (isMultiline) {
       Array.from(editorEl.children).forEach((el) => {
+        if (el.dataset && el.dataset.rtPage === "true") return;
         if (el.tagName === "UL" || el.tagName === "OL") {
           const listClass = el.tagName === "OL" ? "ct-list-ol" : "ct-list-ul";
           el.classList.add("ct-list", listClass);
@@ -1285,7 +1332,7 @@ window.SITE_DATA = ${serialized};
             li.setAttribute("dir", dir);
             applyBlockVisualMeta(li, meta, dir, true);
           });
-        } else if (["DIV", "P", "BLOCKQUOTE"].includes(el.tagName)) {
+        } else if (["DIV", "P", "H2", "BLOCKQUOTE"].includes(el.tagName)) {
           const lineText = collectEditorLines(el).join(" ");
           const meta = getBlockNodeMeta(el);
           const dir = App.detectTextDirection(App.stripRichTags(lineText));
@@ -1306,6 +1353,45 @@ window.SITE_DATA = ${serialized};
     }
     if (editorEl.dataset.fieldName === "isi") {
       syncEditorDropCapPreview(editorEl);
+      updateTulisanPageStats();
+    }
+  }
+
+  function computeTulisanPageStats(rawText) {
+    const lines = String(rawText || "").split(/\r?\n/);
+    let pageBreaks = 0;
+    let babCount = 0;
+    lines.forEach((line) => {
+      const meta = App.parseRichBlockMeta(line);
+      if (meta.isPageBreak) pageBreaks += 1;
+      else if (meta.isHeading && App.stripRichTags(meta.inner).trim()) babCount += 1;
+    });
+    return {
+      pageCount: pageBreaks + 1,
+      pageBreaks,
+      babCount,
+    };
+  }
+
+  function updateTulisanPageStats() {
+    const pageEl = document.getElementById("studio-tulisan-page-count");
+    const babEl = document.getElementById("studio-tulisan-bab-count");
+    if (!pageEl && !babEl) return;
+    const isiEditor = els.studioPanelBody
+      ? els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]')
+      : null;
+    const backing = document.getElementById("rt-backing-isi");
+    const rawText = isiEditor
+      ? serializeEditorToRichText(isiEditor, true)
+      : backing
+      ? backing.value
+      : "";
+    const stats = computeTulisanPageStats(rawText);
+    if (pageEl) {
+      pageEl.textContent = `${stats.pageCount} Halaman`;
+    }
+    if (babEl) {
+      babEl.textContent = `${stats.babCount} Bab`;
     }
   }
 
@@ -1319,6 +1405,9 @@ window.SITE_DATA = ${serialized};
       if (emitInput) {
         backing.dispatchEvent(new Event("input", { bubbles: true }));
       }
+    }
+    if (editorEl.dataset.fieldName === "isi") {
+      updateTulisanPageStats();
     }
     return serialized;
   }
@@ -2089,7 +2178,49 @@ window.SITE_DATA = ${serialized};
           })}
         </div>
         <div>
-          <label class="block text-xs font-semibold text-gray-700 mb-1">Isi Artikel Lengkap (pisahkan paragraf dengan Enter 2x)</label>
+          <label class="block text-xs font-semibold text-gray-700 mb-1.5">Isi Artikel Lengkap (pisahkan paragraf dengan Enter 2x)</label>
+          <div class="mb-2.5 p-2.5 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-gray-700">
+                <span class="font-semibold text-emerald-900">Halaman &amp; Daftar Isi</span>
+                <span id="studio-tulisan-page-count" class="px-2 py-0.5 rounded-full bg-white border border-stone-200 text-gray-700 tabular-nums">1 Halaman</span>
+                <span id="studio-tulisan-bab-count" class="px-2 py-0.5 rounded-full bg-white border border-stone-200 text-gray-700 tabular-nums">0 Bab</span>
+              </div>
+              <button
+                type="button"
+                id="btn-tulisan-insert-pagebreak"
+                class="px-2.5 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors whitespace-nowrap"
+              >
+                + Pemisah Halaman
+              </button>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-200/80 text-[11px]">
+              <div class="flex flex-wrap items-center gap-1.5 text-gray-600">
+                <span>Bagi otomatis setiap</span>
+                <select id="studio-tulisan-split-every" aria-label="Jumlah paragraf per halaman" class="h-7 px-2 border border-stone-200 rounded-lg bg-white text-gray-800 font-medium focus:outline-none focus:border-emerald-700">
+                  <option value="2">2</option>
+                  <option value="3" selected>3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+                <span>paragraf</span>
+                <button
+                  type="button"
+                  id="btn-tulisan-autosplit"
+                  class="px-2.5 py-1 font-semibold text-gray-700 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Terapkan
+                </button>
+              </div>
+              <button
+                type="button"
+                id="btn-tulisan-clear-pagebreaks"
+                class="px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Hapus Pemisah
+              </button>
+            </div>
+          </div>
           ${renderRichTextFieldHtml({
             name: "isi",
             label: "Isi Artikel",
@@ -3159,7 +3290,7 @@ window.SITE_DATA = ${serialized};
     els.studioPanelBody.addEventListener("input", (e) => {
       const richEditor = e.target.closest ? e.target.closest('[data-rich-editor="true"]') : null;
       if (richEditor) {
-        if (!richEditor.textContent.replace(/\u200B/g, "").trim() && richEditor.querySelector("br, div, p") && !richEditor.querySelector("[data-rt-type]")) {
+        if (!richEditor.textContent.replace(/\u200B/g, "").trim() && richEditor.querySelector("br, div, p") && !richEditor.querySelector("[data-rt-type], [data-rt-page]")) {
           richEditor.innerHTML = "";
         }
         updateEditorLineDirections(richEditor);
@@ -3379,6 +3510,93 @@ window.SITE_DATA = ${serialized};
               }
               commitEditorHistory(richEditor);
               syncFloatingBarControlsFromEditor(richEditor, studio.lastTextControl.range);
+              positionFloatingFontBar(richEditor);
+              return;
+            }
+          }
+
+          let curH2 = r.startContainer;
+          let h2Blk = null;
+          while (curH2 && curH2 !== richEditor) {
+            if (curH2.nodeType === Node.ELEMENT_NODE && curH2.tagName === "H2" && curH2.parentNode === richEditor) {
+              h2Blk = curH2;
+              break;
+            }
+            curH2 = curH2.parentNode;
+          }
+          if (h2Blk) {
+            const plainH2 = String(h2Blk.textContent || "").replace(/\u200B/g, "").trim();
+            const isCaretAtEndOfH2 = (() => {
+              try {
+                const tailRange = document.createRange();
+                tailRange.selectNodeContents(h2Blk);
+                tailRange.setStart(r.startContainer, r.startOffset);
+                return String(tailRange.toString() || "").replace(/\u200B/g, "").trim() === "";
+              } catch (_e) {
+                return false;
+              }
+            })();
+            if (plainH2 === "" || isCaretAtEndOfH2) {
+              e.preventDefault();
+              flushEditorHistory(richEditor);
+              studio.suppressEditorTrack = true;
+              try {
+                const newDiv = document.createElement("div");
+                newDiv.setAttribute("dir", "ltr");
+                newDiv.innerHTML = "<br>";
+                if (plainH2 === "") {
+                  h2Blk.parentNode.replaceChild(newDiv, h2Blk);
+                } else if (h2Blk.nextSibling) {
+                  h2Blk.parentNode.insertBefore(newDiv, h2Blk.nextSibling);
+                } else {
+                  h2Blk.parentNode.appendChild(newDiv);
+                }
+                const caretR = document.createRange();
+                caretR.setStart(newDiv, 0);
+                caretR.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(caretR);
+                studio.lastTextControl = { el: richEditor, range: caretR.cloneRange() };
+                updateEditorLineDirections(richEditor);
+                syncEditorToBackingField(richEditor, true);
+              } finally {
+                studio.suppressEditorTrack = false;
+              }
+              commitEditorHistory(richEditor);
+              syncFloatingBarControlsFromEditor(richEditor, studio.lastTextControl.range);
+              positionFloatingFontBar(richEditor);
+              return;
+            }
+          }
+        }
+      }
+
+      if (e.key === "Backspace" && richEditor.dataset.multiline === "true") {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
+          const r = sel.getRangeAt(0);
+          const blk = findEnclosingBlockLine(r.startContainer, richEditor);
+          if (blk && blk.parentNode === richEditor && blk.previousElementSibling && blk.previousElementSibling.dataset && blk.previousElementSibling.dataset.rtPage === "true") {
+            let atStart = false;
+            try {
+              const preRange = document.createRange();
+              preRange.selectNodeContents(blk);
+              preRange.setEnd(r.startContainer, r.startOffset);
+              atStart = String(preRange.toString() || "").replace(/\u200B/g, "") === "";
+            } catch (_err) {}
+            if (atStart) {
+              e.preventDefault();
+              flushEditorHistory(richEditor);
+              studio.suppressEditorTrack = true;
+              try {
+                blk.previousElementSibling.remove();
+                updateEditorLineDirections(richEditor);
+                syncEditorToBackingField(richEditor, true);
+              } finally {
+                studio.suppressEditorTrack = false;
+              }
+              commitEditorHistory(richEditor);
+              syncFloatingBarControlsFromEditor(richEditor, r);
               positionFloatingFontBar(richEditor);
               return;
             }
@@ -3609,6 +3827,9 @@ window.SITE_DATA = ${serialized};
       let cur = node;
       while (cur && cur !== rootEl) {
         if (cur.nodeType === Node.ELEMENT_NODE) {
+          if (cur.dataset && cur.dataset.rtPage === "true") {
+            return null;
+          }
           if (
             cur.tagName === "LI" &&
             cur.parentNode &&
@@ -3632,6 +3853,7 @@ window.SITE_DATA = ${serialized};
     function getDirectLineBlocks(rootEl) {
       const out = [];
       Array.from(rootEl.children).forEach((el) => {
+        if (el.dataset && el.dataset.rtPage === "true") return;
         if (el.tagName === "UL" || el.tagName === "OL") {
           Array.from(el.children).forEach((li) => {
             if (li.tagName === "LI") out.push(li);
@@ -3765,6 +3987,16 @@ window.SITE_DATA = ${serialized};
       if (els.btnFormatOl) {
         els.btnFormatOl.disabled = !isMultiline;
         setFormatButtonActive(els.btnFormatOl, isOlActive);
+      }
+
+      const isH2Active =
+        isMultiline && activeBlocks.length > 0 && activeBlocks.every((blk) => getBlockNodeMeta(blk).isHeading);
+      if (els.btnFormatH2) {
+        els.btnFormatH2.disabled = !isMultiline;
+        setFormatButtonActive(els.btnFormatH2, isH2Active);
+      }
+      if (els.btnInsertPageBreak) {
+        els.btnInsertPageBreak.disabled = !isMultiline;
       }
 
       const isQuoteActive =
@@ -4469,10 +4701,13 @@ window.SITE_DATA = ${serialized};
     function ensureMultilineBlocks(editorEl) {
       if (!editorEl || editorEl.dataset.multiline !== "true") return;
       const blockTags = new Set(["DIV", "P", "LI", "H1", "H2", "H3", "BLOCKQUOTE", "UL", "OL"]);
+      const isTopBlockNode = (node) =>
+        node &&
+        node.nodeType === Node.ELEMENT_NODE &&
+        (blockTags.has(node.tagName) || (node.dataset && node.dataset.rtPage === "true"));
+
       const children = Array.from(editorEl.childNodes);
-      const hasLoose = children.some(
-        (ch) => ch.nodeType !== Node.ELEMENT_NODE || !blockTags.has(ch.tagName)
-      );
+      const hasLoose = children.some((ch) => !isTopBlockNode(ch));
 
       if (!children.length) {
         const div = document.createElement("div");
@@ -4496,7 +4731,7 @@ window.SITE_DATA = ${serialized};
       const offsets = getSelectionOffsets(editorEl);
       let currentDiv = null;
       children.forEach((ch) => {
-        if (ch.nodeType === Node.ELEMENT_NODE && blockTags.has(ch.tagName)) {
+        if (isTopBlockNode(ch)) {
           currentDiv = null;
           return;
         }
@@ -4572,7 +4807,13 @@ window.SITE_DATA = ${serialized};
             curList = null;
             const meta = getBlockNodeMeta(li);
             meta.listType = "";
-            if (replacementTag === "blockquote") meta.isQuote = true;
+            if (replacementTag === "blockquote") {
+              meta.isQuote = true;
+              meta.isHeading = false;
+            } else if (replacementTag === "h2") {
+              meta.isHeading = true;
+              meta.isQuote = false;
+            }
             const newBlk = document.createElement(replacementTag || "div");
             while (li.firstChild) newBlk.appendChild(li.firstChild);
             if (!newBlk.childNodes.length) newBlk.innerHTML = "<br>";
@@ -4807,6 +5048,217 @@ window.SITE_DATA = ${serialized};
         studio.lastTextControl ? studio.lastTextControl.range : null
       );
       positionFloatingFontBar(editorEl);
+    }
+
+    function toggleSubheading() {
+      const targetInfo =
+        studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl
+          : null;
+      if (!targetInfo) return;
+      const editorEl = targetInfo.el;
+      if (editorEl.dataset.multiline !== "true") return;
+      flushEditorHistory(editorEl);
+
+      const offsets = getSelectionOffsets(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        const blocks = getActiveBlocksForCommand(editorEl, targetInfo.range);
+        const allAreHeadings = blocks.length > 0 && blocks.every((blk) => getBlockNodeMeta(blk).isHeading);
+        const nextIsHeading = !allAreHeadings;
+
+        const listItems = blocks.filter(
+          (blk) => blk.tagName === "LI" && blk.parentNode && (blk.parentNode.tagName === "UL" || blk.parentNode.tagName === "OL")
+        );
+        if (listItems.length && nextIsHeading) {
+          unwrapListItemsToBlocks(listItems, "h2");
+        }
+
+        blocks.forEach((blk) => {
+          if (blk.tagName === "LI") return;
+          const meta = getBlockNodeMeta(blk);
+          meta.isHeading = nextIsHeading;
+          if (nextIsHeading) meta.isQuote = false;
+          const targetTag = nextIsHeading ? "H2" : "DIV";
+          if (blk.tagName !== targetTag) {
+            const replacement = document.createElement(targetTag.toLowerCase());
+            while (blk.firstChild) {
+              replacement.appendChild(blk.firstChild);
+            }
+            if (!replacement.childNodes.length) replacement.innerHTML = "<br>";
+            const dir = blk.getAttribute("dir") || "ltr";
+            replacement.setAttribute("dir", dir);
+            applyBlockVisualMeta(replacement, meta, dir, true);
+            blk.parentNode.replaceChild(replacement, blk);
+          } else {
+            const dir = blk.getAttribute("dir") || "ltr";
+            applyBlockVisualMeta(blk, meta, dir, true);
+          }
+        });
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+        restoreSelectionOffsets(editorEl, offsets.start, offsets.end);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function createPageBreakElement() {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = renderPageBreakEditorHtml();
+      return tmp.firstElementChild;
+    }
+
+    function insertPageBreakAtSelection(explicitEditor) {
+      const editorEl =
+        explicitEditor ||
+        (studio.lastTextControl && studio.lastTextControl.el && document.body.contains(studio.lastTextControl.el)
+          ? studio.lastTextControl.el
+          : els.studioPanelBody
+          ? els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]')
+          : null);
+      if (!editorEl || editorEl.dataset.multiline !== "true") return;
+
+      flushEditorHistory(editorEl);
+      studio.suppressEditorTrack = true;
+      try {
+        editorEl.focus({ preventScroll: true });
+        ensureMultilineBlocks(editorEl);
+
+        let anchorBlock = null;
+        const liveSel = window.getSelection();
+        let activeRange =
+          liveSel && liveSel.rangeCount > 0 && editorEl.contains(liveSel.getRangeAt(0).commonAncestorContainer)
+            ? liveSel.getRangeAt(0).cloneRange()
+            : studio.lastTextControl &&
+              studio.lastTextControl.el === editorEl &&
+              studio.lastTextControl.range &&
+              editorEl.contains(studio.lastTextControl.range.commonAncestorContainer)
+            ? studio.lastTextControl.range.cloneRange()
+            : null;
+
+        if (activeRange) {
+          const hit = findEnclosingBlockLine(activeRange.startContainer, editorEl);
+          if (hit) {
+            anchorBlock = hit.tagName === "LI" && hit.parentNode && hit.parentNode.parentNode === editorEl ? hit.parentNode : hit;
+          }
+        }
+
+        const dividerEl = createPageBreakElement();
+        let focusBlock = null;
+
+        if (anchorBlock && anchorBlock.parentNode === editorEl) {
+          if (anchorBlock.nextSibling) {
+            editorEl.insertBefore(dividerEl, anchorBlock.nextSibling);
+          } else {
+            editorEl.appendChild(dividerEl);
+          }
+        } else {
+          editorEl.appendChild(dividerEl);
+        }
+
+        if (dividerEl.nextElementSibling && (!dividerEl.nextElementSibling.dataset || dividerEl.nextElementSibling.dataset.rtPage !== "true")) {
+          focusBlock = dividerEl.nextElementSibling;
+        } else {
+          focusBlock = document.createElement("div");
+          focusBlock.setAttribute("dir", "ltr");
+          focusBlock.innerHTML = "<br>";
+          if (dividerEl.nextSibling) {
+            editorEl.insertBefore(focusBlock, dividerEl.nextSibling);
+          } else {
+            editorEl.appendChild(focusBlock);
+          }
+        }
+
+        const r = document.createRange();
+        r.setStart(focusBlock, 0);
+        r.collapse(true);
+        if (liveSel) {
+          liveSel.removeAllRanges();
+          liveSel.addRange(r);
+        }
+        studio.lastTextControl = { el: editorEl, range: r.cloneRange() };
+
+        updateEditorLineDirections(editorEl);
+        syncEditorToBackingField(editorEl, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+
+      commitEditorHistory(editorEl);
+      syncFloatingBarControlsFromEditor(
+        editorEl,
+        studio.lastTextControl ? studio.lastTextControl.range : null
+      );
+      positionFloatingFontBar(editorEl);
+    }
+
+    function autoSplitTulisanPages(everyN) {
+      const isiEditor = els.studioPanelBody
+        ? els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]')
+        : null;
+      if (!isiEditor) return;
+      const step = Math.max(1, Math.min(10, parseInt(everyN, 10) || 3));
+
+      flushEditorHistory(isiEditor);
+      studio.suppressEditorTrack = true;
+      try {
+        ensureMultilineBlocks(isiEditor);
+        Array.from(isiEditor.querySelectorAll('[data-rt-page="true"]')).forEach((el) => el.remove());
+
+        const children = Array.from(isiEditor.children).filter(
+          (el) => String(el.textContent || "").replace(/\u200B/g, "").trim() !== ""
+        );
+        let paraCount = 0;
+        let prevChild = null;
+        children.forEach((child) => {
+          const isHeading = child.tagName === "H2";
+          const prevWasHeading = Boolean(prevChild && prevChild.tagName === "H2");
+          if (paraCount >= step && (!prevWasHeading || isHeading)) {
+            isiEditor.insertBefore(createPageBreakElement(), child);
+            paraCount = 0;
+          }
+          if (!isHeading) {
+            paraCount += 1;
+          }
+          prevChild = child;
+        });
+
+        updateEditorLineDirections(isiEditor);
+        syncEditorToBackingField(isiEditor, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+      commitEditorHistory(isiEditor);
+    }
+
+    function clearAllTulisanPageBreaks() {
+      const isiEditor = els.studioPanelBody
+        ? els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]')
+        : null;
+      if (!isiEditor) return;
+      const dividers = Array.from(isiEditor.querySelectorAll('[data-rt-page="true"]'));
+      if (!dividers.length) return;
+
+      flushEditorHistory(isiEditor);
+      studio.suppressEditorTrack = true;
+      try {
+        dividers.forEach((el) => el.remove());
+        updateEditorLineDirections(isiEditor);
+        syncEditorToBackingField(isiEditor, true);
+      } finally {
+        studio.suppressEditorTrack = false;
+      }
+      commitEditorHistory(isiEditor);
     }
 
     function setBlockIndent(nextLevel, nextMode, options) {
@@ -5499,6 +5951,12 @@ window.SITE_DATA = ${serialized};
     if (els.btnFormatOl) {
       els.btnFormatOl.addEventListener("click", () => toggleListType("ol"));
     }
+    if (els.btnFormatH2) {
+      els.btnFormatH2.addEventListener("click", toggleSubheading);
+    }
+    if (els.btnInsertPageBreak) {
+      els.btnInsertPageBreak.addEventListener("click", () => insertPageBreakAtSelection());
+    }
     if (els.btnFormatQuote) {
       els.btnFormatQuote.addEventListener("click", toggleBlockquote);
     }
@@ -5592,6 +6050,42 @@ window.SITE_DATA = ${serialized};
     }
 
     els.studioPanelBody.addEventListener("click", async (e) => {
+      const removePageBtn = e.target.closest('[data-remove-pagebreak="true"]');
+      if (removePageBtn) {
+        const dividerEl = removePageBtn.closest('[data-rt-page="true"]');
+        const richEditor = dividerEl ? getRichEditorFromNode(dividerEl) : null;
+        if (dividerEl && richEditor) {
+          e.preventDefault();
+          flushEditorHistory(richEditor);
+          studio.suppressEditorTrack = true;
+          try {
+            dividerEl.remove();
+            updateEditorLineDirections(richEditor);
+            syncEditorToBackingField(richEditor, true);
+          } finally {
+            studio.suppressEditorTrack = false;
+          }
+          commitEditorHistory(richEditor);
+        }
+        return;
+      }
+
+      if (e.target.closest("#btn-tulisan-insert-pagebreak")) {
+        const isiEditor = els.studioPanelBody.querySelector('[data-rich-editor="true"][data-field-name="isi"]');
+        insertPageBreakAtSelection(isiEditor);
+        return;
+      }
+
+      if (e.target.closest("#btn-tulisan-autosplit")) {
+        const everySelect = document.getElementById("studio-tulisan-split-every");
+        autoSplitTulisanPages(everySelect ? everySelect.value : 3);
+        return;
+      }
+
+      if (e.target.closest("#btn-tulisan-clear-pagebreaks")) {
+        clearAllTulisanPageBreaks();
+        return;
+      }
 
       // Munculkan popup kalender langsung saat kolom Tanggal diklik
       const dateInput = e.target.closest('input[data-date-picker="true"]');
