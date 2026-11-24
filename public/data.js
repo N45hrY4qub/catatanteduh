@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 23/11/2026, 20.34.19.
+ * Diperbarui melalui Studio Visual Editor pada 24/11/2026, 19.02.54.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -177,6 +177,18 @@ window.SITE_DATA = {
     "lang": "id"
   },
   "tulisan": [
+    {
+      "id": "tulisan-1795521701642",
+      "status": "published",
+      "judul": "Seorang Muslim dan Ilmu",
+      "kategori": "Thalabul Ilmi",
+      "tanggal": "24 November 2026",
+      "dropCap": false,
+      "ringkasan": "Rasulullah menyebutkan bahwa mempelajari ilmu agama wajib hukumnya bagi setiap muslim. Siapapun yang diinginkan kebaikan oleh Allah pasti akan diberikan pemahaman akan agama Islam. Oleh karena itu sudah seharusnya seorang yang menyatakan dirinya sebagai muslim harus memperhatikan hal ini. Bahwa dia tidak mampu beragama dengan melainkan dengan mempelajarinya.",
+      "isi": [
+        "Insya Allah artikel pertama akan dibahas hubungan \"Antara Seorang Muslim dengan Ilmu Agama\""
+      ]
+    },
     {
       "id": "art-1",
       "status": "trash",
