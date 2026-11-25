@@ -2616,7 +2616,7 @@
     return tmp.firstElementChild;
   }
 
-  function splitElementByWordRange(sourceEl, maxHeightFn, measureBox) {
+  function splitElementByWordRange(sourceEl, maxHeightFn, measureBox, onPageAdvance) {
     // Jika teks sangat pendek atau tidak bisa dibagi lagi, kembalikan apa adanya
     const countWords = (root) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
@@ -2702,7 +2702,11 @@
       }
       cursor = best;
       if (cursor < totalTokens) {
-        while (measureBox.firstChild) measureBox.removeChild(measureBox.firstChild);
+        if (typeof onPageAdvance === "function") {
+          onPageAdvance();
+        } else {
+          while (measureBox.firstChild) measureBox.removeChild(measureBox.firstChild);
+        }
       }
     }
     return outChunks.length ? outChunks : [sourceEl.outerHTML];
@@ -2754,9 +2758,15 @@
 
     const measureInner = document.createElement("div");
     measureInner.className = "ct-book-page-inner";
+    // Pembungkus flow-root memastikan tinggi konten aktual (termasuk margin & float drop cap)
+    // terukur akurat tanpa terpengaruh perilaku scrollHeight === clientHeight pada kontainer flex-1.
+    const measureFlow = document.createElement("div");
+    measureFlow.style.display = "flow-root";
     const measureBody = document.createElement("div");
     measureBody.className = `font-prose text-[#1F2937] space-y-4 ${getArticleProseSizeClasses(state.fontSize)}`;
-    measureInner.appendChild(measureBody);
+    measureBody.style.display = "flow-root";
+    measureFlow.appendChild(measureBody);
+    measureInner.appendChild(measureFlow);
 
     const measureFolio = document.createElement("div");
     measureFolio.className = "ct-book-page-folio";
@@ -2766,8 +2776,18 @@
     measureSheet.appendChild(measureFolio);
     document.body.appendChild(measureSheet);
 
+    const innerStyle = window.getComputedStyle ? window.getComputedStyle(measureInner) : null;
+    const padTop = innerStyle ? parseFloat(innerStyle.paddingTop) || 0 : 28;
+    const padBottom = innerStyle ? parseFloat(innerStyle.paddingBottom) || 0 : 14;
+    const availableContentH = Math.max(80, measureInner.clientHeight - padTop - padBottom - 4);
+
     const bookHeaderHtml = buildBookHeaderHtml(item, siteData);
-    const fitsCurrentSheet = () => measureInner.scrollHeight <= measureInner.clientHeight - 4;
+    const fitsCurrentSheet = () => {
+      const contentH = measureFlow.getBoundingClientRect
+        ? measureFlow.getBoundingClientRect().height
+        : measureFlow.offsetHeight;
+      return measureInner.scrollHeight <= measureInner.clientHeight + 1 && contentH <= availableContentH;
+    };
 
     const pages = [];
     const tocPageMap = new Map();
@@ -2775,13 +2795,13 @@
     let curNodes = [];
 
     const resetMeasureBox = (withHeader) => {
-      measureInner.innerHTML = "";
+      measureFlow.innerHTML = "";
       if (withHeader) {
         const hdrEl = createDomFromHtml(withHeader);
-        if (hdrEl) measureInner.appendChild(hdrEl);
+        if (hdrEl) measureFlow.appendChild(hdrEl);
       }
       measureBody.innerHTML = "";
-      measureInner.appendChild(measureBody);
+      measureFlow.appendChild(measureBody);
     };
 
     const flushPage = () => {
@@ -2912,7 +2932,9 @@
 
         // Masih tidak muat di halaman baru (blok paragraf/kutipan sangat panjang) -> pecah rapi per kata
         if (blk.type === "paragraph" || blk.type === "blockquote") {
-          const chunks = splitElementByWordRange(domEl, fitsCurrentSheet, measureBody);
+          const chunks = splitElementByWordRange(domEl, fitsCurrentSheet, measureBody, () => {
+            resetMeasureBox(false);
+          });
           chunks.forEach((chunkHtml, cIdx) => {
             if (cIdx > 0) flushPage();
             const chEl = createDomFromHtml(chunkHtml);
