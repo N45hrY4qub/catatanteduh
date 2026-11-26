@@ -2,7 +2,7 @@
  * ============================================================================
  * FILE DATA KONTEN & TAMPILAN WEBSITE — CATATAN TEDUH
  * ============================================================================
- * Diperbarui melalui Studio Visual Editor pada 25/11/2026, 16.55.41.
+ * Diperbarui melalui Studio Visual Editor pada 26/11/2026, 12.41.54.
  * File ini siap digunakan langsung bersama Cloudflare Pages & GitHub.
  * ============================================================================
  */
@@ -184,7 +184,7 @@ window.SITE_DATA = {
       "kategori": "Thalabul Ilmi",
       "tanggal": "24 November 2026",
       "dropCap": false,
-      "ringkasan": "Rasulullah menyebutkan bahwa mempelajari ilmu agama wajib hukumnya bagi setiap muslim. Siapapun yang diinginkan kebaikan oleh Allah pasti akan diberikan pemahaman akan agama Islam. Oleh karena itu sudah seharusnya seorang yang menyatakan dirinya sebagai muslim harus memperhatikan hal ini. Bahwa dia tidak mampu beragama dengan melainkan dengan mempelajarinya.",
+      "ringkasan": "Seorang muslim tidak mampu beribadah kepada Allah dengan benar dan sempurna melainkan dengan ilmu. Bahkan Nabi Muhammad shallallahu alaihi wa sallam menyatakan bahwa menuntut ilmu itu wajib bagi setiap muslim. Karena tanpa ilmu kita tidak akan mampu mengetahui mana yang haq, mana yang bathil, mana syariat Allah dan mana yang bukan.",
       "isi": [
         "Insya Allah artikel pertama akan dibahas hubungan \"Antara Seorang Muslim dengan Ilmu Agama\""
       ]
